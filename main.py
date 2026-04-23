@@ -234,6 +234,8 @@ from routers.security_router import router as security_router
 from routers.webhooks_router import router as webhooks_router
 from routers.monitoring_router import router as monitoring_router
 from routers.websocket_router import router as websocket_router
+from routers.ui_bridge_router import router as ui_bridge_router
+from routers.debate_router import router as debate_router
 
 app.include_router(auth_router)
 app.include_router(goal_router)
@@ -248,10 +250,17 @@ app.include_router(security_router)
 app.include_router(webhooks_router)
 app.include_router(monitoring_router)
 app.include_router(websocket_router)
+app.include_router(ui_bridge_router)
+app.include_router(debate_router)
 
 # ── Frontend static files and SPA routing ────────────────────────────────────
 
-_frontend_dir = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+_workspace_root = os.path.dirname(__file__)
+_frontend_candidates = [
+    os.path.join(_workspace_root, "aegisai-source", "dist"),
+    os.path.join(_workspace_root, "frontend", "dist"),
+]
+_frontend_dir = next((d for d in _frontend_candidates if os.path.isdir(d)), _frontend_candidates[0])
 _index_path = os.path.join(_frontend_dir, "index.html")
 
 # Mount static assets (CSS, JS, etc. from dist/assets)

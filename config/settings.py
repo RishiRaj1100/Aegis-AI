@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     GROQ_TEMPERATURE: float = 0.3
     GROQ_MAX_TOKENS: int = 4096   # default; overridden per-agent for large outputs
 
+    # ── OpenRouter fallback LLM ─────────────────────────────────────────────
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    OPENROUTER_SITE_URL: str = "http://localhost:8000"
+    OPENROUTER_APP_NAME: str = "AegisAI"
+
     # ── Sarvam AI ─────────────────────────────────────────────────────────────
     SARVAM_API_KEY: str
     SARVAM_BASE_URL: str = "https://api.sarvam.ai"

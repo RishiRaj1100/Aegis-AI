@@ -43,3 +43,5 @@ xgboost
 pandas
 scikit-learn
 joblib
+shap
+faiss-cpu

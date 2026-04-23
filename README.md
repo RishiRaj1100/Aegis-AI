@@ -280,6 +280,62 @@ Re-calculates the confidence score using the latest outcome history from MongoDB
 
 ---
 
+### POST `/intelligence/predict` — Explainable success prediction
+
+Runs the success predictor with explainability enabled:
+
+- Uses `shap.TreeExplainer` for the XGBoost catalyst model.
+- Computes per-prediction feature contribution values (`shap_values`).
+- Retrieves top 5 similar historical tasks using FAISS-based vector similarity.
+- Returns human-readable key positive and negative decision factors.
+
+```json
+{
+  "goal": "Launch an AI-powered resume screening SaaS in 3 months with a 4-member team",
+  "context": { "budget": "50000 USD", "team_size": 4 },
+  "language": "en-IN"
+}
+```
+
+**Response (excerpt):**
+
+```json
+{
+  "success_probability": 0.78,
+  "predicted_success_probability": 0.78,
+  "explanation": {
+    "positive_factors": [
+      "Execution decomposition supported the success prediction",
+      "Information quality supported the success prediction"
+    ],
+    "negative_factors": ["External uncertainty reduced expected success"]
+  },
+  "shap_values": {
+    "goal_length_words": 0.01234,
+    "num_subtasks": 0.18422,
+    "clarity": 0.09102
+  },
+  "similar_cases": [
+    {
+      "task": "Launch an AI-powered resume screening SaaS with staged rollout",
+      "outcome": "success"
+    },
+    {
+      "task": "Deploy recruitment automation pipeline for resume triage",
+      "outcome": "failed"
+    }
+  ]
+}
+```
+
+Notes:
+
+- `success_probability` is provided for explainability-friendly clients.
+- `predicted_success_probability` is retained for backward compatibility.
+- `similar_cases` contains top matches with outcome labels (`success`, `failed`, or `unknown`).
+
+---
+
 ## Supported Languages (Sarvam AI)
 
 | Code    | Language        |
@@ -462,6 +518,8 @@ pytest tests/ -v
 | `RISK_MEDIUM_THRESHOLD`              |          | `72.0`                      | Confidence below this → MEDIUM risk |
 | `DEBUG`                              |          | `false`                     | Enable hot reload                   |
 | `LOG_LEVEL`                          |          | `INFO`                      | Logging verbosity                   |
+| `OPENROUTER_API_KEY`                 |          | —                           | OpenRouter fallback key (debate)    |
+| `OPENROUTER_MODEL`                   |          | `openai/gpt-4o-mini`        | OpenRouter fallback model           |
 
 ---
 

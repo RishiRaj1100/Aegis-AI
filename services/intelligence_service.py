@@ -39,6 +39,7 @@ from models.schemas import (
     SimulationResponse,
     StrategyProfileResponse,
 )
+from services.explainability import ExplainabilityService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -97,6 +98,7 @@ class IntelligenceService:
         self.mongo = mongo
         self.memory = memory
         self.reflector = reflector
+        self.explainability = ExplainabilityService()
         
         # Load ML Catalyst Model if available
         self.catalyst_model = None
@@ -424,6 +426,12 @@ class IntelligenceService:
     ) -> OutcomePredictionResponse:
         similar = await self.find_similar_tasks(task_id=task_id, goal=goal, user_id=user_id, limit=8)
         success_tasks = await self._all_tasks(user_id=user_id)
+        similar_cases = self.explainability.retrieve_similar_cases(
+            query_text=goal,
+            tasks=success_tasks,
+            top_k=5,
+            exclude_task_id=task_id,
+        )
         resolved = [task for task in success_tasks if task.get("status") in {"COMPLETED", "FAILED"}]
         success_rate = sum(1 for task in resolved if task.get("status") == "COMPLETED") / len(resolved) if resolved else 0.5
         similarity_score = mean([task.similarity for task in similar]) if similar else 0.0
@@ -439,6 +447,9 @@ class IntelligenceService:
                     num_subtasks = len(task_doc["subtasks"])
                     
         probability = None
+        shap_values: Dict[str, float] = {}
+        positive_factors: List[str] = []
+        negative_factors: List[str] = []
         if self.catalyst_model is not None:
             try:
                 features = pd.DataFrame([{
@@ -454,9 +465,17 @@ class IntelligenceService:
                     "similarity_score": float(similarity_score)
                 }])
                 probability = float(self.catalyst_model.predict_proba(features)[0][1])
+                shap_values, positive_factors, negative_factors = self.explainability.explain_prediction(
+                    model=self.catalyst_model,
+                    features=features,
+                    top_k=3,
+                )
                 failure_modes = ["Identified by ML Catalyst"] if probability < 0.5 else []
                 safeguards = ["ML model flagged high risk"] if probability < 0.5 else []
-                rationale = f"Predicted {probability:.1%} success using ML Catalyst model (XGBoost) based on {len(success_tasks)} historical data points."
+                rationale = (
+                    f"Predicted {probability:.1%} success using ML Catalyst (XGBoost) with SHAP-based attribution. "
+                    f"Top decision drivers were summarized into positive and negative factors from {len(success_tasks)} historical tasks."
+                )
                 logger.info(f"ML Catalyst prediction: {probability:.3f}")
             except Exception as e:
                 logger.error(f"ML Catalyst prediction failed: {e}. Falling back to heuristic.")
@@ -464,6 +483,13 @@ class IntelligenceService:
 
         if probability is None:
             probability, failure_modes, safeguards = self._heuristic_probability(goal, context, confidence, similarity_score, success_rate)
+            positive_factors = [
+                "Historical success trend supports execution" if success_rate >= 0.5 else "Some prior tasks completed under similar conditions",
+                "Goal contains actionable signals",
+            ]
+            negative_factors = [
+                "Limited high-similarity historical matches" if similarity_score < 0.3 else "Residual execution uncertainty remains",
+            ]
             rationale = (
                 f"Predicted using {len(similar)} similar historical tasks, current confidence"
                 f" {confidence if confidence is not None else 'n/a'}, and recent success rate {success_rate:.0%}."
@@ -475,12 +501,19 @@ class IntelligenceService:
         return OutcomePredictionResponse(
             task_id=task_id,
             predicted_success_probability=round(probability, 3),
+            success_probability=round(probability, 3),
             predicted_risk_level=risk_level,
             confidence_band=self._confidence_band(probability),
             human_review_required=human_review_required,
             likely_failure_modes=failure_modes,
             recommended_safeguards=safeguards,
             rationale=rationale,
+            explanation={
+                "positive_factors": positive_factors[:3],
+                "negative_factors": negative_factors[:3],
+            },
+            shap_values={k: round(v, 6) for k, v in shap_values.items()},
+            similar_cases=similar_cases,
         )
 
     async def simulate_execution(

@@ -359,116 +359,16 @@ class StrategyProfileResponse(BaseModel):
 class OutcomePredictionResponse(BaseModel):
     task_id: Optional[str] = None
     predicted_success_probability: float
+    success_probability: Optional[float] = None
     predicted_risk_level: RiskLevel
     confidence_band: str
     human_review_required: bool
     likely_failure_modes: List[str]
     recommended_safeguards: List[str]
     rationale: str
-
-
-class SimulationResponse(BaseModel):
-    scenario: str
-    predicted_confidence: float
-    predicted_risk_level: RiskLevel
-    success_probability: float
-    bottlenecks: List[str]
-    mitigation_steps: List[str]
-
-
-class IntelligenceModelRecord(BaseModel):
-    model_id: str = Field(default_factory=lambda: str(uuid4()))
-    name: str
-    version: str
-    description: str = ""
-    status: str = "active"
-    metrics: Dict[str, Any] = Field(default_factory=dict)
-    active: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class DriftReportResponse(BaseModel):
-    drift_score: float
-    baseline_confidence: float
-    recent_confidence: float
-    baseline_success_rate: float
-    recent_success_rate: float
-    retraining_recommended: bool
-    notes: List[str]
-
-
-class IntelligenceOverviewResponse(BaseModel):
-    total_tasks: int
-    total_models: int
-    total_reports: int
-    active_model: Optional[str] = None
-    average_confidence: float
-    recent_success_rate: float
-    drift_score: float
-    scheduled_reflection_status: str
-    human_review_queue_size: int
-
-
-class ReflectionReportResponse(BaseModel):
-    generated_at: datetime
-    lessons: List[str]
-    pattern_summary: str
-    confidence_calibration_note: str
-    suggested_weight_adjustments: Dict[str, float] = Field(default_factory=dict)
-    updated_confidence_bias: float = 0.0
-
-
-class ExecutionGraphNode(BaseModel):
-    id: str
-    label: str
-    type: str = "task"
-    status: str = "pending"
-
-
-class ExecutionGraphEdge(BaseModel):
-    source: str
-    target: str
-    label: str = "depends_on"
-
-
-class ExecutionGraphResponse(BaseModel):
-    task_id: str
-    goal: str
-    nodes: List[ExecutionGraphNode]
-    edges: List[ExecutionGraphEdge]
-    mermaid: str
-
-
-class SimilarTaskResponse(BaseModel):
-    task_id: str
-    goal: str
-    confidence: float
-    risk_level: str
-    similarity: float
-    status: str
-
-
-class StrategyProfileResponse(BaseModel):
-    user_id: Optional[str] = None
-    profile_name: str
-    strengths: List[str]
-    watchouts: List[str]
-    preferred_approach: str
-    success_rate: float
-    average_confidence: float
-    recent_domains: List[str]
-
-
-class OutcomePredictionResponse(BaseModel):
-    task_id: Optional[str] = None
-    predicted_success_probability: float
-    predicted_risk_level: RiskLevel
-    confidence_band: str
-    human_review_required: bool
-    likely_failure_modes: List[str]
-    recommended_safeguards: List[str]
-    rationale: str
+    explanation: Dict[str, List[str]] = Field(default_factory=dict)
+    shap_values: Dict[str, float] = Field(default_factory=dict)
+    similar_cases: List[Dict[str, str]] = Field(default_factory=list)
 
 
 class SimulationResponse(BaseModel):
