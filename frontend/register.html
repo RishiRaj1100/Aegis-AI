@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account — AegisAI</title>
+  <meta name="description" content="Create your AegisAI account and start making trust-scored decisions in 60 seconds.">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/global.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.395.0/dist/umd/lucide.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+</head>
+<body>
+  <div class="auth-layout">
+    <!-- LEFT: Brand Panel -->
+    <div class="auth-brand" style="background:#0A0E1A;">
+      <a href="index.html" class="navbar__logo" style="position:absolute;top:24px;left:24px;font-size:18px;">
+        Aegis<span class="navbar__logo-ai">AI</span><span class="navbar__logo-dot"></span>
+      </a>
+      <div style="max-width:360px;text-align:center;">
+        <h2 style="font-family:var(--font-display);font-size:32px;margin-bottom:32px;line-height:1.3;">Join the AI that thinks before it speaks.</h2>
+        <!-- Rotating testimonials -->
+        <div id="testimonials" style="position:relative;min-height:160px;">
+          <div class="glass-card p-24 testimonial" style="position:absolute;inset:0;opacity:1;transition:opacity 0.6s,transform 0.6s;">
+            <p style="font-style:italic;font-size:15px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">"The trust score stopped me from executing a plan that would have cost us $40K."</p>
+            <p style="font-size:12px;color:var(--text-muted);">— Sarah Chen, VP Operations</p>
+          </div>
+          <div class="glass-card p-24 testimonial" style="position:absolute;inset:0;opacity:0;transition:opacity 0.6s,transform 0.6s;">
+            <p style="font-style:italic;font-size:15px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">"First AI that tells me when NOT to do something. Revolutionary."</p>
+            <p style="font-size:12px;color:var(--text-muted);">— James Park, Founder</p>
+          </div>
+          <div class="glass-card p-24 testimonial" style="position:absolute;inset:0;opacity:0;transition:opacity 0.6s,transform 0.6s;">
+            <p style="font-style:italic;font-size:15px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">"After 30 decisions, AegisAI knows how I think better than I do."</p>
+            <p style="font-size:12px;color:var(--text-muted);">— Priya Sharma, CTO</p>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin-top:32px;">
+          <span style="font-family:var(--font-mono);color:var(--indigo);" id="decision-count">4,200</span>+ decisions trusted this week
+        </p>
+      </div>
+    </div>
+
+    <!-- RIGHT: Form Panel -->
+    <div class="auth-form-panel">
+      <div class="auth-form">
+        <h1 style="font-family:var(--font-display);font-size:30px;margin-bottom:8px;">Create your account</h1>
+        <p style="color:var(--text-secondary);font-size:15px;margin-bottom:32px;">Your first mission is 60 seconds away</p>
+
+        <form id="register-form" style="display:flex;flex-direction:column;gap:16px;" novalidate>
+          <!-- Name -->
+          <div>
+            <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block;" for="reg-name">Full Name</label>
+            <div style="position:relative;">
+              <i data-lucide="user" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;"></i>
+              <input class="neo-input" id="reg-name" type="text" placeholder="Your full name" required autocomplete="name" style="padding-left:40px;" aria-label="Full name">
+            </div>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block;" for="reg-email">Email</label>
+            <div style="position:relative;">
+              <i data-lucide="mail" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;"></i>
+              <input class="neo-input" id="reg-email" type="email" placeholder="you@company.com" required autocomplete="email" style="padding-left:40px;padding-right:40px;" aria-label="Email">
+              <i id="email-check" data-lucide="check-circle" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--emerald);opacity:0;transition:opacity 0.3s;pointer-events:none;"></i>
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div>
+            <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block;" for="reg-password">Password</label>
+            <div style="position:relative;">
+              <i data-lucide="lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;"></i>
+              <input class="neo-input" id="reg-password" type="password" placeholder="••••••••" required autocomplete="new-password" style="padding-left:40px;padding-right:44px;" aria-label="Password">
+              <button type="button" id="toggle-pw" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;" aria-label="Toggle password">
+                <i data-lucide="eye" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
+            <div class="strength-meter" style="margin-top:8px;">
+              <div class="strength-meter__segment" id="str-1"></div>
+              <div class="strength-meter__segment" id="str-2"></div>
+              <div class="strength-meter__segment" id="str-3"></div>
+              <div class="strength-meter__segment" id="str-4"></div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;" id="pw-requirements">
+              <span class="pw-req" data-req="length" style="font-size:11px;color:var(--text-muted);transition:color 0.2s;">○ 8+ chars</span>
+              <span class="pw-req" data-req="upper" style="font-size:11px;color:var(--text-muted);transition:color 0.2s;">○ Uppercase</span>
+              <span class="pw-req" data-req="number" style="font-size:11px;color:var(--text-muted);transition:color 0.2s;">○ Number</span>
+              <span class="pw-req" data-req="symbol" style="font-size:11px;color:var(--text-muted);transition:color 0.2s;">○ Symbol</span>
+            </div>
+          </div>
+
+          <!-- Confirm Password -->
+          <div>
+            <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block;" for="reg-confirm">Confirm Password</label>
+            <div style="position:relative;">
+              <i data-lucide="lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;"></i>
+              <input class="neo-input" id="reg-confirm" type="password" placeholder="••••••••" required autocomplete="new-password" style="padding-left:40px;" aria-label="Confirm password">
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div style="display:flex;align-items:center;gap:12px;margin:4px 0;">
+            <div style="flex:1;height:1px;background:var(--border-ghost);"></div>
+            <span style="font-size:11px;color:var(--text-muted);">or continue with</span>
+            <div style="flex:1;height:1px;background:var(--border-ghost);"></div>
+          </div>
+
+          <!-- OAuth -->
+          <div style="display:flex;gap:12px;">
+            <button type="button" class="btn-ghost" style="flex:1;background:#fff;color:#333;border:1px solid rgba(255,255,255,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              Google
+            </button>
+            <button type="button" class="btn-ghost" style="flex:1;background:#24292F;color:#fff;border:1px solid rgba(255,255,255,0.1);">
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              GitHub
+            </button>
+          </div>
+
+          <!-- Terms -->
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <input type="checkbox" id="terms-check" style="margin-top:3px;accent-color:var(--indigo);" required>
+            <label for="terms-check" style="font-size:13px;color:var(--text-secondary);line-height:1.4;">
+              I agree to the <a href="#" style="color:var(--indigo);">Terms of Service</a> and <a href="#" style="color:var(--indigo);">Privacy Policy</a>
+            </label>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" class="btn-primary btn-primary--wide btn-primary--lg" id="register-btn">Create Account</button>
+        </form>
+
+        <p style="text-align:center;margin-top:24px;font-size:14px;color:var(--text-secondary);">
+          Already have an account? <a href="login.html" style="color:var(--indigo);font-weight:500;">Sign in →</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/global.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script>
+  (function() {
+    'use strict';
+    const pw = document.getElementById('reg-password');
+    const confirm = document.getElementById('reg-confirm');
+    const emailInput = document.getElementById('reg-email');
+    const emailCheck = document.getElementById('email-check');
+
+    // Email validation visual
+    emailInput.addEventListener('input', () => {
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value);
+      emailCheck.style.opacity = valid ? '1' : '0';
+      emailInput.classList.toggle('neo-input--success', valid);
+    });
+
+    // Password toggle
+    document.getElementById('toggle-pw').addEventListener('click', () => {
+      const isP = pw.type === 'password';
+      pw.type = isP ? 'text' : 'password';
+      const icon = document.querySelector('#toggle-pw i');
+      icon.setAttribute('data-lucide', isP ? 'eye-off' : 'eye');
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [document.getElementById('toggle-pw')] });
+    });
+
+    // Password strength
+    pw.addEventListener('input', () => {
+      const v = pw.value;
+      const checks = { length: v.length >= 8, upper: /[A-Z]/.test(v), number: /[0-9]/.test(v), symbol: /[^A-Za-z0-9]/.test(v) };
+      const score = Object.values(checks).filter(Boolean).length;
+
+      for (let i = 1; i <= 4; i++) {
+        const seg = document.getElementById('str-' + i);
+        seg.className = 'strength-meter__segment' + (i <= score ? ` active-${score}` : '');
+      }
+
+      document.querySelectorAll('.pw-req').forEach(el => {
+        const req = el.dataset.req;
+        const met = checks[req];
+        el.style.color = met ? 'var(--emerald)' : 'var(--text-muted)';
+        el.textContent = (met ? '✓ ' : '○ ') + el.textContent.substring(2);
+      });
+    });
+
+    // Confirm password match
+    confirm.addEventListener('input', () => {
+      const match = confirm.value === pw.value && confirm.value.length > 0;
+      confirm.classList.toggle('neo-input--success', match);
+      confirm.classList.toggle('neo-input--error', !match && confirm.value.length > 0);
+    });
+
+    // Testimonial rotation
+    const testimonials = document.querySelectorAll('.testimonial');
+    let tidx = 0;
+    setInterval(() => {
+      testimonials[tidx].style.opacity = '0';
+      tidx = (tidx + 1) % testimonials.length;
+      testimonials[tidx].style.opacity = '1';
+    }, 5000);
+
+    // Form submit
+    const form = document.getElementById('register-form');
+    const btn = document.getElementById('register-btn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('reg-name').value.trim();
+      const email = emailInput.value.trim();
+      const password = pw.value;
+      const confirmVal = confirm.value;
+
+      if (!name || !email || !password) {
+        if (typeof Aegis !== 'undefined') Aegis.toast('Please fill in all fields.', 'error');
+        return;
+      }
+      if (password !== confirmVal) {
+        if (typeof Aegis !== 'undefined') Aegis.toast('Passwords do not match.', 'error');
+        return;
+      }
+      if (!document.getElementById('terms-check').checked) {
+        if (typeof Aegis !== 'undefined') Aegis.toast('Please accept the terms.', 'warning');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader-2" style="width:16px;height:16px;animation:spin 1s linear infinite;"></i> Creating account...';
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+
+      try {
+        await Auth.register(name, email, password);
+        btn.style.background = 'var(--emerald)';
+        btn.style.boxShadow = '0 6px 0 #059669, 0 10px 30px rgba(16,185,129,0.35)';
+        btn.innerHTML = 'Account created ✓';
+        if (typeof confetti !== 'undefined') {
+          confetti({ particleCount: 100, spread: 70, colors: ['#6366F1', '#7C3AED', '#22D3EE'] });
+        }
+        setTimeout(() => { window.location.href = 'onboarding.html'; }, 1500);
+      } catch (err) {
+        if (typeof Aegis !== 'undefined') Aegis.toast(err.message || 'Registration failed.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Create Account';
+      }
+    });
+
+    // GSAP entrance
+    if (typeof gsap !== 'undefined' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      gsap.from('.auth-form > *', { x: 40, opacity: 0, stagger: 0.06, duration: 0.5, ease: 'power2.out', delay: 0.1 });
+    }
+  })();
+  </script>
+</body>
+</html>

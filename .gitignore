@@ -1,0 +1,78 @@
+# AegisAI - .gitignore
+
+# Environment
+.env
+*.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Local data / generated artifacts
+aegis_training_dataset.csv
+.DS_Store
+__pycache__/
+
+# Internal handoff/progress docs (exclude from clean public repo)
+APP_INTEGRATION_STATUS.md
+COMPLETION_SUMMARY.md
+DASHBOARD_IMPLEMENTATION_SUMMARY.md
+DEPLOYMENT_SUCCESS.md
+FINAL_COMPLETION_REPORT.md
+FRONTEND_UPGRADE.md
+NEXT_STEPS.md
+PHASE2_PROGRESS.md
+PINECONE_SETUP.md
+PROJECT_HANDOFF.md
+QUICK_REFERENCE.md
+SESSION_COMPLETION.md
+URL_VALIDATION_CHECKLIST.md
+ADVANCED_FEATURES_GUIDE.md
+COMPLETE_IMPLEMENTATION_GUIDE.md
+IMPLEMENTATION_GUIDE.md

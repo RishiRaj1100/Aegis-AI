@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome — AegisAI</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/global.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.395.0/dist/umd/lucide.js"></script>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .step { display: none; max-width: 680px; width: 100%; text-align: center; }
+    .step.active { display: block; }
+    .agent-node-ob { width: 56px; height: 56px; border-radius: 50%; background: var(--bg-glass); border: 1px solid var(--border-ghost); display: flex; align-items: center; justify-content: center; transition: all 0.5s ease; }
+    .agent-node-ob.lit { border-color: var(--border-indigo); background: var(--indigo-dim); box-shadow: var(--glow-indigo); }
+    .agent-line-ob { width: 40px; height: 2px; background: var(--border-ghost); transition: background 0.5s ease; }
+    .agent-line-ob.lit { background: var(--indigo); }
+    .checkmark-svg-ob { width: 80px; height: 80px; }
+    .checkmark-circle-ob { stroke: var(--emerald); stroke-width: 2; fill: none; stroke-dasharray: 250; stroke-dashoffset: 250; animation: draw-c 0.6s ease forwards; }
+    .checkmark-check-ob { stroke: var(--emerald); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 50; stroke-dashoffset: 50; animation: draw-k 0.3s ease forwards 0.6s; }
+    @keyframes draw-c { to { stroke-dashoffset: 0; } }
+    @keyframes draw-k { to { stroke-dashoffset: 0; } }
+    .range-slider { -webkit-appearance: none; width: 100%; height: 6px; background: var(--bg-elevated); border-radius: 3px; outline: none; }
+    .range-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--indigo); cursor: pointer; box-shadow: 0 0 10px rgba(99,102,241,0.4); }
+  </style>
+</head>
+<body>
+  <div class="onboarding">
+    <!-- Step dots -->
+    <div class="onboarding__dots" id="step-dots">
+      <div class="onboarding__dot active"></div>
+      <div class="onboarding__dot"></div>
+      <div class="onboarding__dot"></div>
+      <div class="onboarding__dot"></div>
+    </div>
+    <div class="progress-bar" style="max-width:300px;margin-bottom:48px;">
+      <div class="progress-bar__fill" id="ob-progress" style="width:25%;"></div>
+    </div>
+
+    <!-- Step 1: Meet AegisAI -->
+    <div class="step active" id="step-1">
+      <h1 style="font-family:var(--font-display);font-size:32px;margin-bottom:16px;">Meet AegisAI</h1>
+      <p style="color:var(--text-secondary);font-size:16px;margin-bottom:40px;max-width:520px;margin-left:auto;margin-right:auto;">
+        AegisAI is the first AI system that scores its own plans — and refuses to deliver a bad one without warning you first.
+      </p>
+      <div style="display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:40px;" id="ob-pipeline">
+        <!-- Built by JS -->
+      </div>
+      <div style="display:flex;justify-content:center;gap:12px;margin-bottom:40px;flex-wrap:wrap;">
+        <span class="badge badge--indigo">Scores confidence</span>
+        <span class="badge badge--emerald">Scans for ethics</span>
+        <span class="badge badge--amber">Learns over time</span>
+      </div>
+      <button class="btn-primary btn-primary--lg" onclick="goToStep(2)">Got it, show me</button>
+    </div>
+
+    <!-- Step 2: Watch a Live Mission -->
+    <div class="step" id="step-2">
+      <h1 style="font-family:var(--font-display);font-size:32px;margin-bottom:16px;">Watch a Live Mission</h1>
+      <p style="color:var(--text-secondary);font-size:16px;margin-bottom:32px;">See how AegisAI processes a real goal through all 6 agents.</p>
+      <div class="glass-card" style="padding:24px;max-width:600px;margin:0 auto 24px;text-align:left;">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;font-family:var(--font-mono);">DEMO GOAL:</p>
+        <p style="font-size:15px;color:var(--text-secondary);margin-bottom:20px;">"Launch a SaaS product in 90 days with a team of 4"</p>
+        <div class="pipeline-strip" id="ob-demo-pipeline" style="justify-content:center;margin-bottom:16px;"></div>
+        <div id="ob-demo-result" style="display:none;margin-top:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="badge badge--emerald">Trust: 79</span>
+            <div style="display:flex;gap:8px;">
+              <span class="badge badge--amber">⚠ 2 ethics flags</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary btn-primary--lg" id="ob-run-demo">
+        <i data-lucide="play" style="width:16px;height:16px;"></i> Run demo
+      </button>
+      <button class="btn-ghost" id="ob-next-2" style="display:none;margin-top:12px;" onclick="goToStep(3)">Now I understand →</button>
+    </div>
+
+    <!-- Step 3: Personalize -->
+    <div class="step" id="step-3">
+      <h1 style="font-family:var(--font-display);font-size:32px;margin-bottom:16px;">Personalize your experience</h1>
+      <p style="color:var(--text-secondary);font-size:16px;margin-bottom:40px;">Set your preferences to tailor AegisAI to your needs.</p>
+      <div style="max-width:400px;margin:0 auto;display:flex;flex-direction:column;gap:24px;text-align:left;">
+        <div>
+          <label style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;display:block;">Language</label>
+          <select class="neo-input" id="ob-language" aria-label="Language">
+            <option value="en-IN">🇬🇧 English</option>
+            <option value="hi-IN">🇮🇳 Hindi</option>
+            <option value="bn-IN">🇮🇳 Bengali</option>
+            <option value="ta-IN">🇮🇳 Tamil</option>
+            <option value="te-IN">🇮🇳 Telugu</option>
+            <option value="mr-IN">🇮🇳 Marathi</option>
+          </select>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:14px;color:var(--text-secondary);">Voice output</span>
+          <div class="toggle" id="ob-voice-toggle" role="switch" aria-checked="false" tabindex="0"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:14px;color:var(--text-secondary);">Alert when plans need updating</span>
+          <div class="toggle active" id="ob-alert-toggle" role="switch" aria-checked="true" tabindex="0"></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:14px;color:var(--text-secondary);">Flag plans below:</span>
+            <span class="badge badge--indigo" id="threshold-badge" style="font-size:13px;">65</span>
+          </div>
+          <input type="range" class="range-slider" id="ob-threshold" min="40" max="90" value="65" aria-label="Trust threshold">
+        </div>
+      </div>
+      <button class="btn-primary btn-primary--lg" style="margin-top:40px;" onclick="goToStep(4)">Continue</button>
+    </div>
+
+    <!-- Step 4: Ready -->
+    <div class="step" id="step-4">
+      <svg class="checkmark-svg-ob" viewBox="0 0 80 80" style="margin:0 auto 24px;">
+        <circle class="checkmark-circle-ob" cx="40" cy="40" r="35"/>
+        <polyline class="checkmark-check-ob" points="24,42 34,52 56,30"/>
+      </svg>
+      <h1 style="font-family:var(--font-display);font-size:36px;margin-bottom:8px;" id="welcome-name">You're ready!</h1>
+      <p style="color:var(--text-secondary);font-size:18px;margin-bottom:40px;">Your first mission awaits.</p>
+      <a href="dashboard.html" class="btn-primary btn-primary--lg" style="padding:16px 48px;font-size:16px;" id="launch-btn">
+        Launch Mission Control →
+      </a>
+    </div>
+  </div>
+
+  <script src="assets/js/global.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script>
+  (function() {
+    'use strict';
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let currentStep = 1;
+
+    // Personalize welcome
+    const user = Auth.getUser();
+    if (user && user.name) {
+      document.getElementById('welcome-name').textContent = `Welcome to AegisAI, ${user.name.split(' ')[0]}.`;
+    }
+
+    // Step 1 pipeline animation
+    const agents = ['Commander', 'Research', 'Execution', 'Trust', 'Memory', 'Reflection'];
+    const obPipeline = document.getElementById('ob-pipeline');
+    if (obPipeline) {
+      obPipeline.innerHTML = agents.map((a, i) => `
+        ${i > 0 ? '<div class="agent-line-ob" id="ob-line-${i}"></div>' : ''}
+        <div class="agent-node-ob" id="ob-node-${i}">
+          <i data-lucide="${['terminal','search','list-checks','shield-check','database','brain'][i]}" style="width:22px;height:22px;color:var(--text-muted);"></i>
+        </div>
+      `).join('');
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [obPipeline] });
+
+      // Animate nodes lighting up
+      if (!reducedMotion) {
+        agents.forEach((_, i) => {
+          setTimeout(() => {
+            document.getElementById('ob-node-' + i)?.classList.add('lit');
+            if (i > 0) document.getElementById('ob-line-' + i)?.classList.add('lit');
+          }, 400 + i * 200);
+        });
+      }
+    }
+
+    // Step navigation
+    window.goToStep = function(step) {
+      const prev = document.getElementById('step-' + currentStep);
+      const next = document.getElementById('step-' + step);
+      if (!prev || !next) return;
+
+      if (typeof gsap !== 'undefined' && !reducedMotion) {
+        gsap.to(prev, { x: -40, opacity: 0, duration: 0.28, ease: 'power2.in', onComplete: () => {
+          prev.classList.remove('active');
+          next.classList.add('active');
+          gsap.from(next, { x: 40, opacity: 0, duration: 0.28, ease: 'power2.out' });
+        }});
+      } else {
+        prev.classList.remove('active');
+        next.classList.add('active');
+      }
+
+      currentStep = step;
+      document.querySelectorAll('.onboarding__dot').forEach((d, i) => {
+        d.classList.toggle('active', i < step);
+      });
+      document.getElementById('ob-progress').style.width = (step * 25) + '%';
+    };
+
+    // Step 2 demo
+    const demoBtn = document.getElementById('ob-run-demo');
+    const demoPipeline = document.getElementById('ob-demo-pipeline');
+    if (demoBtn && demoPipeline) {
+      function renderDemoPipeline(activeIdx) {
+        demoPipeline.innerHTML = agents.map((a, i) => {
+          let cls = 'pipeline-node--idle';
+          let icon = 'circle';
+          if (i < activeIdx) { cls = 'pipeline-node--complete'; icon = 'check'; }
+          else if (i === activeIdx) { cls = 'pipeline-node--active shimmer'; icon = 'loader-2'; }
+          return `<div class="pipeline-node ${cls}" style="min-width:80px;font-size:11px;"><i data-lucide="${icon}" style="width:12px;height:12px;${icon === 'loader-2' ? 'animation:spin 1s linear infinite;' : ''}"></i> ${a}</div>${i < 5 ? '<div class="pipeline-connector' + (i < activeIdx ? ' active' : '') + '"></div>' : ''}`;
+        }).join('');
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [demoPipeline] });
+      }
+
+      renderDemoPipeline(-1);
+
+      demoBtn.addEventListener('click', async () => {
+        demoBtn.disabled = true;
+        demoBtn.innerHTML = '<i data-lucide="loader-2" style="width:16px;height:16px;animation:spin 1s linear infinite;"></i> Running...';
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [demoBtn] });
+
+        for (let i = 0; i < agents.length; i++) {
+          renderDemoPipeline(i);
+          await new Promise(r => setTimeout(r, 600));
+        }
+        renderDemoPipeline(agents.length);
+        document.getElementById('ob-demo-result').style.display = 'block';
+        demoBtn.style.display = 'none';
+        document.getElementById('ob-next-2').style.display = 'inline-flex';
+      });
+    }
+
+    // Step 3 toggles
+    document.querySelectorAll('.toggle').forEach(t => {
+      t.addEventListener('click', () => {
+        t.classList.toggle('active');
+        t.setAttribute('aria-checked', t.classList.contains('active'));
+      });
+    });
+
+    // Threshold slider
+    const slider = document.getElementById('ob-threshold');
+    const badge = document.getElementById('threshold-badge');
+    if (slider && badge) {
+      slider.addEventListener('input', () => { badge.textContent = slider.value; });
+    }
+
+    // Step 4 launch with fade
+    document.getElementById('launch-btn')?.addEventListener('click', (e) => {
+      if (typeof gsap !== 'undefined' && !reducedMotion) {
+        e.preventDefault();
+        gsap.to(document.body, { opacity: 0, duration: 0.5, ease: 'power2.in', onComplete: () => {
+          window.location.href = 'dashboard.html';
+        }});
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
