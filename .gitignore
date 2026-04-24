@@ -58,6 +58,9 @@ docker-compose.override.yml
 
 # Local data / generated artifacts
 aegis_training_dataset.csv
+.dist_backup/
+**/.dist_backup/
+frontend/.dist_backup/
 .DS_Store
 __pycache__/
 
