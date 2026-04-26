@@ -159,16 +159,39 @@ class DebateSystem:
             "Use concise, structured bullets with unique reasoning in your role scope."
         )
 
-        responses: Dict[str, str] = {}
-        for key, cfg in self.agent_configs.items():
+        import asyncio
+        
+        # Parallelise debate agent calls
+        async def _call_agent(key: str, cfg: DebateAgentConfig) -> tuple[str, str]:
             content = await self._infer_with_fallback(
                 system_prompt=cfg.system_prompt,
                 user_message=prompt,
                 temperature=cfg.temperature,
                 max_tokens=420,
             )
-            responses[key] = content.strip()
-            logger.info("Debate agent response | agent=%s | text=%s", key, responses[key][:400])
+            return key, content.strip()
+
+        logger.info("Running parallel debate for 4 agents...")
+        tasks_list = [
+            _call_agent(key, cfg) 
+            for key, cfg in self.agent_configs.items()
+        ]
+        
+        results = await asyncio.gather(*tasks_list, return_exceptions=True)
+        
+        responses: Dict[str, str] = {}
+        for res in results:
+            if isinstance(res, Exception):
+                logger.error("Debate agent call failed: %s", res)
+                continue
+            key, content = res
+            responses[key] = content
+            logger.info("Debate agent response received | agent=%s", key)
+
+        # Fallback if some agents failed
+        for key in self.agent_configs:
+            if key not in responses:
+                responses[key] = "Agent analysis unavailable due to provider error."
 
         synthesis_system = (
             "You are the Synthesis Module for a multi-agent debate. "
@@ -196,7 +219,15 @@ class DebateSystem:
         final_decision = "Insufficient synthesis response"
         confidence = 0.5
         try:
-            parsed = json.loads(synthesis_raw)
+            # Clean markdown code blocks if present
+            clean_raw = synthesis_raw.strip()
+            if clean_raw.startswith("```"):
+                import re
+                match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean_raw, re.DOTALL)
+                if match:
+                    clean_raw = match.group(1)
+            
+            parsed = json.loads(clean_raw)
             final_decision = str(parsed.get("final_decision", final_decision)).strip()
             confidence = float(parsed.get("confidence", confidence))
         except Exception:

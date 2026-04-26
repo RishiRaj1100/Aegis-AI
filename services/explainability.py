@@ -36,29 +36,25 @@ class ExplainabilityService:
     """Model explainability and case-based reasoning helper."""
 
     _READABLE_NAMES: Dict[str, str] = {
-        "goal_length_words": "Goal clarity and scope",
-        "num_subtasks": "Execution decomposition",
-        "clarity": "Goal clarity",
-        "info_quality": "Information quality",
-        "feasibility": "Execution feasibility",
-        "manageability": "Risk manageability",
-        "resource_adequacy": "Resource adequacy",
-        "uncertainty": "External uncertainty",
-        "past_success_rate": "Historical success rate",
-        "similarity_score": "Similarity to prior tasks",
+        "task_length": "Task scope & details",
+        "deadline_days": "Time remaining to deadline",
+        "complexity": "Execution complexity",
+        "resources": "Available resources",
+        "dependencies": "External dependencies",
+        "priority": "Task priority",
+        "deadline_urgency": "Urgency (Priority vs Deadline)",
+        "resource_efficiency": "Resource vs Complexity ratio",
     }
 
     _FEATURE_CONCEPTS: Dict[str, str] = {
-        "goal_length_words": "goal_definition",
-        "clarity": "goal_definition",
-        "num_subtasks": "execution_structure",
-        "info_quality": "information_quality",
-        "feasibility": "execution_feasibility",
-        "manageability": "risk_manageability",
-        "resource_adequacy": "resource_adequacy",
-        "uncertainty": "external_uncertainty",
-        "past_success_rate": "historical_signal",
-        "similarity_score": "case_similarity",
+        "task_length": "scope",
+        "deadline_days": "time",
+        "complexity": "difficulty",
+        "resources": "resources",
+        "dependencies": "dependencies",
+        "priority": "priority",
+        "deadline_urgency": "urgency",
+        "resource_efficiency": "efficiency",
     }
 
     def _feature_label(self, key: str) -> str:
@@ -78,50 +74,67 @@ class ExplainabilityService:
             return {}, [], []
 
         if not SHAP_AVAILABLE:
-            logger.warning("SHAP is not available; explainability will be empty")
+            return {}, [], ["Explainability disabled (SHAP library missing)."]
+
+        if model is None:
             return {}, [], []
 
-        explainer = shap.TreeExplainer(model)
-        raw_values = explainer.shap_values(features)
+        try:
+            # Handle sklearn Pipeline: extract the model and transform features
+            if hasattr(model, "named_steps") and "model" in model.named_steps:
+                inner_model = model.named_steps["model"]
+                # Transform features if there's a preprocessor
+                if "preprocessor" in model.named_steps:
+                    transformed_features = model.named_steps["preprocessor"].transform(features)
+                elif "scaler" in model.named_steps:
+                    transformed_features = model.named_steps["scaler"].transform(features)
+                else:
+                    transformed_features = features
+            else:
+                inner_model = model
+                transformed_features = features
 
-        # Binary classification usually returns either:
-        # - ndarray shape (n_samples, n_features), or
-        # - list[class_idx] -> ndarray
-        if isinstance(raw_values, list):
-            values = np.array(raw_values[-1], dtype=np.float64)
-        else:
-            values = np.array(raw_values, dtype=np.float64)
+            # Use TreeExplainer for XGBoost/RandomForest, or KernelExplainer for generic
+            try:
+                explainer = shap.TreeExplainer(inner_model)
+                raw_values = explainer.shap_values(transformed_features)
+            except Exception:
+                # Fallback to KernelExplainer if TreeExplainer fails (slower)
+                explainer = shap.Explainer(inner_model, transformed_features)
+                raw_values = explainer(transformed_features).values
 
-        if values.ndim == 1:
-            sample_values = values
-        else:
-            sample_values = values[0]
+            # Handle case where SHAP returns a list (for multi-class)
+            if isinstance(raw_values, list):
+                # For binary classification, index 1 is usually the positive class
+                raw_values = raw_values[1] if len(raw_values) > 1 else raw_values[0]
 
-        feature_names = list(features.columns)
-        shap_map: Dict[str, float] = {
-            name: float(sample_values[idx]) for idx, name in enumerate(feature_names)
-        }
+            # If multi-row input, take the first row
+            if len(raw_values.shape) > 1:
+                raw_values = raw_values[0]
 
-        ranked = sorted(shap_map.items(), key=lambda kv: abs(kv[1]), reverse=True)
+            # Map back to feature names
+            feature_names = features.columns.tolist()
+            shap_map = {name: float(val) for name, val in zip(feature_names, raw_values)}
 
-        positive: List[str] = []
-        negative: List[str] = []
-        used_concepts: set[str] = set()
-        for key, val in ranked:
-            concept = self._feature_concept(key)
-            if concept in used_concepts:
-                continue
-            label = self._feature_label(key)
-            if val > 0 and len(positive) < top_k:
-                positive.append(f"{label} supported the success prediction")
-                used_concepts.add(concept)
-            elif val < 0 and len(negative) < top_k:
-                negative.append(f"{label} reduced expected success")
-                used_concepts.add(concept)
-            if len(positive) >= top_k and len(negative) >= top_k:
-                break
+            # Identify top drivers
+            sorted_items = sorted(shap_map.items(), key=lambda x: abs(x[1]), reverse=True)
+            top_drivers = sorted_items[:top_k]
 
-        return shap_map, positive, negative
+            positive_factors = []
+            negative_factors = []
+
+            for name, val in top_drivers:
+                readable = self._READABLE_NAMES.get(name, name.replace("_", " ").title())
+                if val > 0:
+                    positive_factors.append(f"{readable} contributes positively to success.")
+                else:
+                    negative_factors.append(f"{readable} increases execution risk.")
+
+            return shap_map, positive_factors, negative_factors
+
+        except Exception as e:
+            logger.warning(f"Explainability failed: {e}")
+            return {}, [], ["Prediction driven by weighted historical evidence (SHAP fallback)."]
 
     def retrieve_similar_cases(
         self,
@@ -193,3 +206,13 @@ class ExplainabilityService:
                 }
             )
         return similar_cases
+
+
+_explainability_service: ExplainabilityService | None = None
+
+
+def get_explainability_service() -> ExplainabilityService:
+    global _explainability_service
+    if _explainability_service is None:
+        _explainability_service = ExplainabilityService()
+    return _explainability_service

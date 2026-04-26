@@ -56,7 +56,7 @@ class SubTask(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     title: str
     description: str
-    priority: int = Field(ge=1, le=5, default=3)
+    priority: int = Field(ge=1, le=10, default=3)
     estimated_duration_minutes: Optional[int] = None
     dependencies: List[str] = Field(default_factory=list)
 
@@ -78,8 +78,12 @@ class TrustComponents(BaseModel):
 class TrustScore(BaseModel):
     confidence: float = Field(ge=0.0, le=100.0, description="Overall confidence 0-100")
     risk_level: RiskLevel
-    components: TrustComponents
+    dimensions: TrustComponents = Field(alias="components")
     reasoning: str
+    evidence: List[Dict[str, Any]] = Field(default_factory=list)
+    mitigations: List[str] = Field(default_factory=list)
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -93,13 +97,41 @@ class GoalRequest(BaseModel):
     context: Optional[Dict[str, Any]] = Field(default=None, description="Optional extra context KV")
     modality: InputModality = Field(default=InputModality.TEXT)
 
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: Any) -> str:
+        if not v:
+            return SupportedLanguage.EN.value
+        if isinstance(v, str):
+            # Map common names to codes
+            mapping = {
+                "english": "en-IN",
+                "hindi": "hi-IN",
+                "bengali": "bn-IN",
+                "tamil": "ta-IN",
+                "telugu": "te-IN",
+                "kannada": "kn-IN",
+                "malayalam": "ml-IN",
+                "marathi": "mr-IN",
+                "gujarati": "gu-IN",
+                "punjabi": "pa-IN"
+            }
+            val = v.lower().strip()
+            if val in mapping:
+                return mapping[val]
+            # Check if it's already a valid code (case-insensitive)
+            for lang in SupportedLanguage:
+                if lang.value.lower() == val:
+                    return lang.value
+        return v
+
     @field_validator("goal")
     @classmethod
     def goal_must_not_be_whitespace(cls, v: str) -> str:
         stripped = v.strip()
-        if len(stripped) < 5:
+        if len(stripped) < 2:  # Relaxed from 5 to 2
             raise ValueError(
-                "Goal must contain at least 5 non-whitespace characters."
+                "Goal must contain at least 2 non-whitespace characters."
             )
         return stripped
 
@@ -201,11 +233,19 @@ class PlanResponse(BaseModel):
     recommended_resources: List[str] = Field(default_factory=list)
     confidence: float
     risk_level: RiskLevel
-    components: Optional[TrustComponents] = None
+    dimensions: Optional[TrustComponents] = Field(None, alias="components")
     reasoning: str
+    execution_status: str = "PENDING"
+    execution_reason: str = ""
+    explainability: Dict[str, Any] = Field(default_factory=dict)
+    evidence: List[Dict[str, Any]] = Field(default_factory=list)
+    mitigations: List[str] = Field(default_factory=list)
+    debate_results: Optional[Dict[str, Any]] = None
     spoken_summary: Optional[str] = None
     language: str
     created_at: datetime
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ConfidenceResponse(BaseModel):
@@ -222,6 +262,16 @@ class GoalResponse(BaseModel):
     status: TaskStatus
     message: str
     plan: Optional[PlanResponse] = None
+    confidence: Optional[float] = None
+    risk_level: Optional[RiskLevel] = None
+    explainability: Dict[str, Any] = Field(default_factory=dict)
+    trust_dimensions: Dict[str, Any] = Field(default_factory=dict)
+    similar_tasks: List[Dict[str, Any]] = Field(default_factory=list)
+    reflection: Optional[Dict[str, Any]] = None
+    processing_time_ms: Optional[float] = None
+    reasoning_provider: str = "Groq/Mistral-7B"
+    system_trace: List[str] = Field(default_factory=list)
+    fallback_used: bool = False
     audio_response_base64: Optional[str] = Field(
         default=None,
         description="Base64-encoded TTS audio when voice modality is requested",
@@ -250,8 +300,11 @@ class TaskDocument(BaseModel):
     recommended_resources: List[str] = Field(default_factory=list)
     confidence: float = 0.0
     risk_level: str = RiskLevel.MEDIUM.value
-    trust_components: Dict[str, float] = Field(default_factory=dict)
+    trust_dimensions: Dict[str, float] = Field(default_factory=dict, alias="trust_components")
     reasoning: str = ""
+    execution_status: str = "PENDING"
+    execution_reason: str = ""
+    explainability: Dict[str, Any] = Field(default_factory=dict)
     spoken_summary: str = ""
     status: str = TaskStatus.PENDING.value
     outcome_notes: Optional[str] = None
@@ -333,6 +386,24 @@ class ExecutionGraphResponse(BaseModel):
     goal: str
     nodes: List[ExecutionGraphNode]
     edges: List[ExecutionGraphEdge]
+    mermaid: str
+
+class MemoryGraphNode(BaseModel):
+    id: str
+    label: str
+    type: str = "task"
+    status: str = "completed"
+    confidence: float = 0.0
+
+class MemoryGraphEdge(BaseModel):
+    source: str
+    target: str
+    label: str = "similar_to"
+    weight: float = 1.0
+
+class MemoryGraphResponse(BaseModel):
+    nodes: List[MemoryGraphNode]
+    edges: List[MemoryGraphEdge]
     mermaid: str
 
 

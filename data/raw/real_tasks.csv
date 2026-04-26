@@ -1,0 +1,11 @@
+task_id,task,deadline_days,complexity,resources,dependencies,priority,success,delay
+REAL-001,Launch a health supplement brand in India targeting mothers aged 25-45,60,0.85,0.4,5,1,0,1
+REAL-002,Migrate legacy SQL database to AWS RDS with zero downtime,14,0.75,0.8,2,2,1,0
+REAL-003,Implement GDPR compliance for a mid-sized SaaS platform,90,0.65,0.7,4,3,1,0
+REAL-004,Develop and launch a mobile app for hyper-local grocery delivery,120,0.9,0.5,10,1,0,1
+REAL-005,Setup a multi-agent AI customer support system using AegisAI,30,0.8,0.6,3,2,1,1
+REAL-006,Conduct a nationwide marketing campaign for eco-friendly packaging,45,0.7,0.5,6,3,0,1
+REAL-007,Optimize supply chain logistics for a D2C fashion brand,60,0.6,0.8,3,2,1,0
+REAL-008,Security audit and penetration testing for a fintech application,21,0.85,0.9,2,1,1,0
+REAL-009,Scalability testing for a video streaming service hitting 1M users,14,0.8,0.7,4,2,0,1
+REAL-010,Recruit and onboard 10 senior software engineers in 30 days,30,0.75,0.4,1,1,0,0

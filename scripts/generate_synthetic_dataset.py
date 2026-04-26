@@ -1,9 +1,8 @@
 """
 AegisAI - Synthetic Dataset Generator
-Generates a realistic CSV dataset of agent execution traces for training the Catalyst ML Model.
+Generates a realistic CSV dataset of agent execution traces for training the ML Models.
 """
 
-import os
 import numpy as np
 import pandas as pd
 
@@ -12,72 +11,73 @@ def generate_dataset(num_samples=5000, output_path="aegis_training_dataset.csv")
     
     # ── Feature Generation ───────────────────────────────────────────────
     
-    # Goal length (mostly short to medium, some long)
-    goal_length_words = np.random.negative_binomial(15, 0.2, num_samples) + 5
+    # Basic Features
+    task_length = np.random.negative_binomial(15, 0.2, num_samples) + 5
+    deadline_days = np.random.randint(1, 31, num_samples)
+    complexity = np.clip(np.random.normal(0.5, 0.2, num_samples), 0.1, 1.0)
+    resources = np.clip(np.random.normal(0.6, 0.25, num_samples), 0.1, 1.0)
+    dependencies = np.random.poisson(2, num_samples)
+    priority = np.random.randint(1, 6, num_samples)
     
-    # Subtasks count (usually 3 to 8, correlated slightly with goal length)
-    num_subtasks = np.clip(np.random.poisson(goal_length_words / 10) + 2, 1, 20)
-    
-    # Trust Components (0.0 to 1.0)
-    clarity = np.clip(np.random.normal(0.7, 0.15, num_samples), 0.1, 1.0)
-    info_quality = np.clip(np.random.normal(0.65, 0.2, num_samples), 0.1, 1.0)
-    feasibility = np.clip(np.random.normal(0.6, 0.25, num_samples), 0.1, 1.0)
-    manageability = np.clip(np.random.normal(0.75, 0.15, num_samples), 0.1, 1.0)
-    resource_adequacy = np.clip(np.random.normal(0.5, 0.3, num_samples), 0.05, 1.0)
-    uncertainty = np.clip(np.random.normal(0.3, 0.2, num_samples), 0.0, 1.0)
-    
-    # Context features
-    past_success_rate = np.clip(np.random.normal(0.65, 0.1, num_samples), 0.2, 0.95)
-    similarity_score = np.clip(np.random.beta(2, 5, num_samples), 0.0, 0.9)
+    # Derived Features (as requested)
+    deadline_urgency = priority / deadline_days
+    resource_efficiency = resources / (complexity + 0.1)  # avoid div zero
     
     # ── Label Generation (Success vs Failure) ────────────────────────────
     
-    # Calculate a "hidden" real probability based on the features to make the dataset realistic
-    # Higher clarity, feasibility, resources, and past success increase success probability
-    # Higher uncertainty decreases it
-    hidden_score = (
-        (clarity * 1.5) +
-        (info_quality * 1.0) +
-        (feasibility * 2.5) +
-        (manageability * 1.0) +
-        (resource_adequacy * 2.0) -
-        (uncertainty * 1.5) +
-        (past_success_rate * 1.5) +
-        (similarity_score * 0.5) -
-        (np.log1p(goal_length_words) * 0.2)
-    )
-    
-    # Normalize and convert to probability using sigmoid
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
+
+    # Hidden score for success
+    hidden_success_score = (
+        (resources * 2.5) -
+        (complexity * 1.5) -
+        (dependencies * 0.5) +
+        (deadline_days * 0.1) +
+        (priority * 0.2) +
+        (resource_efficiency * 1.0) -
+        (deadline_urgency * 0.5) -
+        (np.log1p(task_length) * 0.2)
+    )
     
-    # Shift and scale hidden_score so mean is around 0
-    shifted_score = (hidden_score - np.mean(hidden_score)) / np.std(hidden_score) * 2.0 + 0.5
-    probabilities = sigmoid(shifted_score)
+    success_prob = sigmoid((hidden_success_score - np.mean(hidden_success_score)) / np.std(hidden_success_score) * 2.0)
+    success = np.random.binomial(1, success_prob)
+
+    # ── Label Generation (Delay vs On-time) ─────────────────────────────
     
-    # Generate binary outcome (1 = COMPLETED, 0 = FAILED)
-    status = np.random.binomial(1, probabilities)
+    hidden_delay_score = (
+        (complexity * 2.0) +
+        (dependencies * 1.5) +
+        (deadline_urgency * 1.0) -
+        (resources * 1.5) -
+        (deadline_days * 0.1) +
+        (np.random.normal(0, 0.5, num_samples))
+    )
+    
+    delay_prob = sigmoid((hidden_delay_score - np.mean(hidden_delay_score)) / np.std(hidden_delay_score) * 2.0)
+    delay = np.random.binomial(1, delay_prob)
     
     # ── Assemble DataFrame ───────────────────────────────────────────────
     df = pd.DataFrame({
-        "goal_length_words": goal_length_words.astype(int),
-        "num_subtasks": num_subtasks.astype(int),
-        "clarity": np.round(clarity, 3),
-        "info_quality": np.round(info_quality, 3),
-        "feasibility": np.round(feasibility, 3),
-        "manageability": np.round(manageability, 3),
-        "resource_adequacy": np.round(resource_adequacy, 3),
-        "uncertainty": np.round(uncertainty, 3),
-        "past_success_rate": np.round(past_success_rate, 3),
-        "similarity_score": np.round(similarity_score, 3),
-        "status": status.astype(int)
+        "task_id": [f"TASK-{i}" for i in range(num_samples)],
+        "task": [f"Simulated task {i} with {length} words" for i, length in enumerate(task_length)],
+        "task_length": task_length.astype(int),
+        "deadline_days": deadline_days.astype(int),
+        "complexity": np.round(complexity, 3),
+        "resources": np.round(resources, 3),
+        "dependencies": dependencies.astype(int),
+        "priority": priority.astype(int),
+        "deadline_urgency": np.round(deadline_urgency, 3),
+        "resource_efficiency": np.round(resource_efficiency, 3),
+        "success": success.astype(int),
+        "delay": delay.astype(int)
     })
     
     # Save to CSV
     df.to_csv(output_path, index=False)
-    print(f"Generated {num_samples} rows of synthetic training data.")
-    print(f"Dataset saved to {os.path.abspath(output_path)}")
-    print(f"Overall Success Rate: {df['status'].mean():.1%}")
+    print(f"Generated {num_samples} rows of training data.")
+    print(f"Overall Success Rate: {df['success'].mean():.1%}")
+    print(f"Overall Delay Rate: {df['delay'].mean():.1%}")
 
 if __name__ == "__main__":
     generate_dataset()

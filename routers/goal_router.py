@@ -38,6 +38,12 @@ def _get_pipeline() -> AegisAIPipeline:
 # ── POST /goal ─────────────────────────────────────────────────────────────────
 
 @router.post(
+    "/analyze_task",
+    response_model=GoalResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a text-based goal (alias)",
+)
+@router.post(
     "",
     response_model=GoalResponse,
     status_code=status.HTTP_202_ACCEPTED,

@@ -14,7 +14,10 @@ language.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from services.groq_service import GroqService
 from models.schemas import RiskLevel, TrustComponents, TrustScore
@@ -39,70 +42,60 @@ def _build_trust_prompt() -> str:
     return f"""
 You are the Trust Agent of AegisAI — a senior risk analyst and confidence assessor.
 
-Your job is to evaluate how confident AegisAI is in the success of the user's goal,
-given everything the other agents have produced. You must think holistically — every
-goal is different, every situation is unique.
+Your job is to perform claim extraction, risk scoring, and a 6-dimensional trust evaluation for the user's goal and research insights.
 
-Evaluate six dimensions, score each 0.0 to 1.0:
+Evaluate these six dimensions (0.0 to 1.0):
+1. goal_clarity: How clear and specific the goal is.
+2. information_quality: Completeness and reliability of available data.
+3. execution_feasibility: Real-world achievability.
+4. risk_manageability: How controllable the identified risks are.
+5. resource_adequacy: Sufficiency of time and resources.
+6. external_uncertainty: Stability of the environment.
 
-1. goal_clarity          — How clearly and specifically has the goal been defined?
-                           (vague wishful thinking = 0.1, crisp measurable objective = 1.0)
-2. information_quality   — How complete, relevant, and reliable is the research gathered?
-                           (almost no data = 0.1, rich, well-sourced intelligence = 1.0)
-3. execution_feasibility — How realistic is it to carry out the execution plan given real-world
-                           constraints (time, budget, team, technology, market)?
-                           (highly unrealistic = 0.1, straightforward with clear steps = 1.0)
-4. risk_manageability    — How controllable are the identified risks?
-                           (existential uncontrollable risks = 0.1, minor manageable risks = 1.0)
-5. resource_adequacy     — Are the available resources (time, capital, people, tools) sufficient?
-                           (severely under-resourced = 0.1, well-resourced and realistic = 1.0)
-6. external_uncertainty  — How stable and predictable is the environment around this goal?
-                           (high market/regulatory/technical uncertainty = 0.1, stable = 1.0)
+Identify the core assumptions (claims) and potential failure scenarios.
 
-Then compute:
-  confidence_score = round(
-        goal_clarity * {_WEIGHTS['goal_clarity']:.2f} +
-        information_quality * {_WEIGHTS['information_quality']:.2f} +
-        execution_feasibility * {_WEIGHTS['execution_feasibility']:.2f} +
-        risk_manageability * {_WEIGHTS['risk_manageability']:.2f} +
-        resource_adequacy * {_WEIGHTS['resource_adequacy']:.2f} +
-        external_uncertainty * {_WEIGHTS['external_uncertainty']:.2f}
-  , 1) * 100   [result must be 0–100]
-
-Risk level:
-    - HIGH   if confidence_score < {settings.RISK_HIGH_THRESHOLD:.1f}
-    - MEDIUM if confidence_score < {settings.RISK_MEDIUM_THRESHOLD:.1f}
-    - LOW    if confidence_score >= {settings.RISK_MEDIUM_THRESHOLD:.1f}
-
-Return a valid JSON object — nothing else:
+Return a valid JSON object matching this schema — nothing else:
 {{
-  "goal_clarity": <0.0-1.0>,
-  "information_quality": <0.0-1.0>,
-  "execution_feasibility": <0.0-1.0>,
-  "risk_manageability": <0.0-1.0>,
-  "resource_adequacy": <0.0-1.0>,
-  "external_uncertainty": <0.0-1.0>,
-  "confidence_score": <0.0-100.0>,
-  "risk_level": "LOW" | "MEDIUM" | "HIGH",
-  "reasoning": "<3-5 sentence plain-language explanation of WHY this score was given, what the key limiting factor is, and one concrete improvement action>",
-  "improvement_tip": "<one specific actionable improvement>"
+  "claims": ["<extracted claim 1>", "<extracted claim 2>"],
+  "confidence_score": <0.0 to 1.0>,
+  "delay_risk": <0.0 to 1.0 (estimated probability of missing deadlines)>,
+  "failure_scenarios": ["<scenario 1>", "<scenario 2>"],
+  "dimensions": {{
+    "goal_clarity": <score>,
+    "information_quality": <score>,
+    "execution_feasibility": <score>,
+    "risk_manageability": <score>,
+    "resource_adequacy": <score>,
+    "external_uncertainty": <score>
+  }}
 }}
 """.strip()
 
-
 _TRUST_PROMPT = _build_trust_prompt()
+
+@dataclass(slots=True)
+class VerificationResult:
+    claim: str
+    is_verified: bool
+    risk_score: float
+    confidence_score: float
+    risk_level: RiskLevel
+    evidence: List[Dict[str, Any]]
+    reasoning: str
+    mitigations: List[str]
+    blocking_reason: Optional[str]
+    timestamp: str
 
 
 class TrustAgent:
     """
-    Performs a holistic, LLM-driven confidence and risk assessment.
-
-    Replaces the previous rigid weighted formula with a contextual evaluation
-    that adapts to every goal scenario.
+    Performs claim extraction, risk scoring, and failure scenario identification.
     """
 
-    def __init__(self, groq: GroqService) -> None:
+    def __init__(self, groq: GroqService | None = None, db: Any | None = None, search_service: Any | None = None) -> None:
         self.groq = groq
+        self.db = db
+        self.search_service = search_service
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -116,15 +109,12 @@ class TrustAgent:
         goal_summary: str,
         language: str = "en-IN",
         research_insights: str = "",
-        execution_plan: str = "",
         risks: list | None = None,
         context: Dict[str, Any] | None = None,
-    ) -> TrustScore:
+    ) -> Dict[str, Any]:
         """
         Holistic LLM-driven confidence and risk evaluation.
-
-        Returns:
-            TrustScore with confidence, risk_level, components, reasoning.
+        Returns a dict matching the trust_analysis schema.
         """
         risks_text = "\n".join(f"  - {r}" for r in (risks or [])) or "  None explicitly identified."
         context_text = ""
@@ -137,90 +127,326 @@ class TrustAgent:
             f"GOAL: {goal}\n"
             f"REFINED SUMMARY: {goal_summary}\n\n"
             f"RESEARCH INSIGHTS (excerpt):\n{research_insights[:1000]}\n\n"
-            f"EXECUTION PLAN (excerpt):\n{execution_plan[:800]}\n\n"
             f"IDENTIFIED RISKS:\n{risks_text}\n\n"
-            f"HISTORICAL SUCCESS RATE (similar past tasks): {past_success_rate:.0%}\n"
-            f"RESEARCH DATA COMPLETENESS: {data_completeness:.0%}\n"
-            f"RAW TASK FEASIBILITY (from Research Agent): {task_feasibility:.0%}\n"
-            f"COMPLEXITY SCORE (from Commander): {complexity_score:.2f} / 1.0"
-            f"{context_text}"
+            f"{context_text}\n\n"
+            "Analyze these inputs and return the JSON with claims, confidence_score, failure_scenarios, and the 6 trust dimensions."
         )
         if lang_note:
             user_message += lang_note
 
-        logger.info("Trust Agent running holistic LLM evaluation…")
-        raw: Dict[str, Any] = await self.groq.chat_json(
-            system_prompt=_TRUST_PROMPT,
-            user_message=user_message,
-            temperature=0.3,
-            max_tokens=1500,  # 6 scores + reasoning paragraph + JSON
-        )
-
-        # Extract and clamp all dimension scores
-        def _clamp(v: Any, lo: float = 0.0, hi: float = 1.0) -> float:
-            try:
-                return max(lo, min(hi, float(v)))
-            except (TypeError, ValueError):
-                return 0.5
-
-        gc  = _clamp(raw.get("goal_clarity", 0.5))
-        iq  = _clamp(raw.get("information_quality", data_completeness))
-        ef  = _clamp(raw.get("execution_feasibility", task_feasibility))
-        rm  = _clamp(raw.get("risk_manageability", 0.5))
-        ra  = _clamp(raw.get("resource_adequacy", 0.5))
-        eu  = _clamp(raw.get("external_uncertainty", 0.5))
-
-        # Use LLM-computed confidence; fall back to weighted formula if needed
-        raw_conf = raw.get("confidence_score")
-        if raw_conf is not None:
-            confidence = round(max(0.0, min(100.0, float(raw_conf))), 1)
-        else:
-            confidence = round(
-                (
-                    gc * _WEIGHTS["goal_clarity"]
-                    + iq * _WEIGHTS["information_quality"]
-                    + ef * _WEIGHTS["execution_feasibility"]
-                    + rm * _WEIGHTS["risk_manageability"]
-                    + ra * _WEIGHTS["resource_adequacy"]
-                    + eu * _WEIGHTS["external_uncertainty"]
-                )
-                * 100,
-                1,
+        logger.info("Trust Agent running 6D evaluation and claim extraction…")
+        try:
+            raw: Dict[str, Any] = await self.groq.chat_json(
+                system_prompt=_TRUST_PROMPT,
+                user_message=user_message,
+                temperature=0.2,
             )
+            
+            dims = raw.get("dimensions", {})
+            return {
+                "claims": raw.get("claims", []),
+                "confidence_score": float(raw.get("confidence_score", 0.5)),
+                "delay_risk": float(raw.get("delay_risk", 0.3)),
+                "failure_scenarios": raw.get("failure_scenarios", []),
+                "dimensions": {
+                    "goal_clarity": float(dims.get("goal_clarity", 0.5)),
+                    "information_quality": float(dims.get("information_quality", 0.5)),
+                    "execution_feasibility": float(dims.get("execution_feasibility", 0.5)),
+                    "risk_manageability": float(dims.get("risk_manageability", 0.5)),
+                    "resource_adequacy": float(dims.get("resource_adequacy", 0.5)),
+                    "external_uncertainty": float(dims.get("external_uncertainty", 0.5)),
+                }
+            }
+        except Exception as exc:
+            logger.error("Trust Agent evaluation failed: %s", exc)
+            return {
+                "claims": ["Assumes plan is executable without detailed constraints."],
+                "confidence_score": 0.5,
+                "delay_risk": 0.4,
+                "failure_scenarios": ["Unforeseen technical blockers.", "Resource unavailability."],
+                "dimensions": {
+                    "goal_clarity": 0.5,
+                    "information_quality": 0.5,
+                    "execution_feasibility": 0.5,
+                    "risk_manageability": 0.5,
+                    "resource_adequacy": 0.5,
+                    "external_uncertainty": 0.5,
+                }
+            }
 
-        # Risk level from LLM; fall back to threshold rules
-        raw_risk = str(raw.get("risk_level", "")).upper()
-        if raw_risk in {"LOW", "MEDIUM", "HIGH"}:
-            risk_level = RiskLevel(raw_risk)
-        else:
-            risk_level = self._compute_risk(confidence)
 
-        # Pack into TrustComponents using the six new dimensions
-        components = TrustComponents(
-            goal_clarity=gc,
-            information_quality=iq,
-            execution_feasibility=ef,
-            risk_manageability=rm,
-            resource_adequacy=ra,
-            external_uncertainty=eu,
-        )
+    async def verify_claim(
+        self,
+        claim: str,
+        context: Dict[str, Any] | None = None,
+        user_id: str | None = None,
+    ) -> VerificationResult:
+        """Verify a claim using local evidence and historical similarity."""
+        claim_factors = self._extract_claim_factors(claim, context)
+        similar_cases = await self._retrieve_similar_cases(claim, context=context, user_id=user_id)
+        risk_score, evidence = self._compute_risk_score(claim_factors, similar_cases)
+        confidence_score = self._compute_confidence(evidence, similar_cases, risk_score)
+        risk_level = self._get_risk_level(risk_score)
+        mitigations = self._suggest_mitigations(claim_factors, risk_level, similar_cases)
+        reasoning = self._generate_reasoning(claim, evidence, risk_level)
 
-        reasoning = raw.get("reasoning", "Holistic trust analysis completed.")
-        tip = raw.get("improvement_tip", "")
-        if tip:
-            reasoning += f"\n\n**Key Action:** {tip}"
+        blocking_reason: Optional[str] = None
+        if risk_score > 0.85:
+            blocking_reason = f"Critical risk ({risk_score:.2f}). Operation blocked."
+        elif confidence_score < 0.3:
+            blocking_reason = f"Insufficient confidence ({confidence_score:.2f}). Human review required."
 
-        logger.info(
-            "Trust Agent | confidence=%.1f%% | risk=%s | gc=%.2f iq=%.2f ef=%.2f rm=%.2f ra=%.2f eu=%.2f",
-            confidence, risk_level.value, gc, iq, ef, rm, ra, eu,
-        )
-
-        return TrustScore(
-            confidence=confidence,
+        is_verified = blocking_reason is None and risk_score <= 0.65 and confidence_score >= 0.45
+        result = VerificationResult(
+            claim=claim,
+            is_verified=is_verified,
+            risk_score=round(max(0.0, min(1.0, risk_score)), 3),
+            confidence_score=round(max(0.0, min(1.0, confidence_score)), 3),
             risk_level=risk_level,
-            components=components,
+            evidence=evidence,
             reasoning=reasoning,
+            mitigations=mitigations,
+            blocking_reason=blocking_reason,
+            timestamp=datetime.utcnow().isoformat(),
         )
+
+        self._store_verification(result, user_id, context)
+        return result
+
+    def should_block_execution(self, verification: VerificationResult) -> bool:
+        """Return True when execution should be blocked by policy gates."""
+        return (
+            verification.risk_score > 0.8
+            or verification.confidence_score < 0.4
+            or not verification.is_verified
+        )
+
+    def _extract_claim_factors(self, claim: str, context: Dict[str, Any] | None) -> Dict[str, Any]:
+        factors: Dict[str, Any] = {}
+        lowered = claim.lower()
+
+        if match := re.search(r"(\d+)\s*hours?", lowered):
+            factors["estimated_duration_hours"] = int(match.group(1))
+        if match := re.search(r"(\d+)\s*days?", lowered):
+            factors["estimated_duration_days"] = int(match.group(1))
+
+        if any(term in lowered for term in ["high priority", "urgent", "critical"]):
+            factors["priority"] = "high"
+        elif any(term in lowered for term in ["low priority", "backlog"]):
+            factors["priority"] = "low"
+
+        if any(term in lowered for term in ["team", "resource", "dependency", "integration"]):
+            factors["has_team_dependency"] = True
+
+        if context:
+            for key, value in context.items():
+                factors[key] = value
+
+        return factors
+
+    def _get_tasks_collection(self):
+        if self.db is not None:
+            return self.db["tasks"]
+        try:
+            from services.mongodb_service import get_db
+
+            return get_db()["tasks"]
+        except Exception:
+            return None
+
+    async def _retrieve_similar_cases(
+        self,
+        claim: str,
+        context: Dict[str, Any] | None = None,
+        user_id: str | None = None,
+        top_k: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve historical cases to verify the current claim."""
+        if self.search_service and hasattr(self.search_service, "find_similar_tasks"):
+            try:
+                results = await self.search_service.find_similar_tasks(
+                    goal=claim,
+                    user_id=user_id,
+                    limit=top_k
+                )
+                return [
+                    {
+                        "case_id": r.task_id,
+                        "status": r.status,
+                        "similarity": r.similarity,
+                        "confidence": r.confidence
+                    } for r in results
+                ]
+            except Exception as e:
+                logger.warning(f"Trust search failed: {e}")
+        return []
+
+    def _compute_risk_score(
+        self,
+        claim_factors: Dict[str, Any],
+        similar_cases: List[Dict[str, Any]],
+    ) -> Tuple[float, List[Dict[str, Any]]]:
+        evidence: List[Dict[str, Any]] = []
+        if not similar_cases:
+            base_risk = 0.55
+            evidence.append({"type": "no_similar_cases", "weight": 0.0})
+        else:
+            weighted_failure = 0.0
+            weighted_total = 0.0
+            for case in similar_cases:
+                similarity = float(case.get("similarity", 0.0))
+                weighted_total += similarity
+                status = str(case.get("status", "UNKNOWN"))
+                if status == "FAILED":
+                    weighted_failure += similarity
+                    evidence.append(
+                        {
+                            "type": "similar_failure",
+                            "case_id": case.get("case_id"),
+                            "similarity": similarity,
+                            "weight": -1.0,
+                        }
+                    )
+                elif status == "COMPLETED":
+                    evidence.append(
+                        {
+                            "type": "similar_success",
+                            "case_id": case.get("case_id"),
+                            "similarity": similarity,
+                            "weight": 1.0,
+                        }
+                    )
+
+            if weighted_total > 0:
+                base_risk = weighted_failure / weighted_total
+            else:
+                base_risk = 0.5
+
+        duration_days = float(claim_factors.get("estimated_duration_days", 0) or 0)
+        duration_hours = float(claim_factors.get("estimated_duration_hours", 0) or 0)
+        if duration_days > 30:
+            base_risk += 0.12
+            evidence.append({"type": "long_duration", "weight": 0.12, "value": duration_days})
+        if duration_hours > 40:
+            base_risk += 0.08
+            evidence.append({"type": "long_duration", "weight": 0.08, "value": duration_hours})
+
+        if claim_factors.get("has_team_dependency"):
+            base_risk += 0.05
+            evidence.append({"type": "dependency_pressure", "weight": 0.05})
+
+        if str(claim_factors.get("priority", "")).lower() == "high":
+            base_risk += 0.05
+            evidence.append({"type": "priority_pressure", "weight": 0.05})
+
+        return max(0.0, min(1.0, base_risk)), evidence
+
+    def _compute_confidence(
+        self,
+        evidence: List[Dict[str, Any]],
+        similar_cases: List[Dict[str, Any]],
+        risk_score: float,
+    ) -> float:
+        if not evidence and not similar_cases:
+            # Baseline confidence for valid-sounding goals when no history exists
+            return max(0.4, 0.72 - risk_score)
+
+        avg_similarity = sum(float(case.get("similarity", 0.0)) for case in similar_cases) / len(similar_cases) if similar_cases else 0.0
+        evidence_strength = min(1.0, 0.2 + (len(evidence) * 0.08) + (avg_similarity * 0.45))
+        confidence = evidence_strength * 0.6 + (1.0 - risk_score) * 0.4
+        return max(0.0, min(1.0, confidence))
+
+    def _get_risk_level(self, risk_score: float) -> RiskLevel:
+        if risk_score >= 0.8:
+            return RiskLevel.HIGH
+        if risk_score >= 0.45:
+            return RiskLevel.MEDIUM
+        return RiskLevel.LOW
+
+    def _suggest_mitigations(
+        self,
+        claim_factors: Dict[str, Any],
+        risk_level: RiskLevel,
+        similar_cases: List[Dict[str, Any]],
+    ) -> List[str]:
+        mitigations: List[str] = []
+        if risk_level == RiskLevel.HIGH:
+            mitigations.append("Split the claim into smaller verifiable steps before execution.")
+        if claim_factors.get("has_team_dependency"):
+            mitigations.append("Validate dependencies and ownership before proceeding.")
+        if claim_factors.get("priority") == "high":
+            mitigations.append("Add a human approval gate because the task is time-sensitive.")
+        if similar_cases:
+            failed = sum(1 for case in similar_cases if case.get("status") == "FAILED")
+            if failed:
+                mitigations.append("Review the failure modes from the closest historical cases.")
+        if not mitigations:
+            mitigations.append("Proceed with monitoring and record the outcome for calibration.")
+        return mitigations
+
+    def _generate_reasoning(self, claim: str, evidence: List[Dict[str, Any]], risk_level: RiskLevel) -> str:
+        evidence_count = len(evidence)
+        if evidence_count == 0:
+            return (
+                f"The claim '{claim}' could not be matched against strong historical evidence, so the assessment stays conservative. "
+                f"Current risk is {risk_level.value.lower()} because the system has limited comparable cases."
+            )
+        failures = sum(1 for item in evidence if item.get("type") == "similar_failure")
+        successes = sum(1 for item in evidence if item.get("type") == "similar_success")
+        return (
+            f"The claim '{claim}' was evaluated against {evidence_count} evidence signals, including {successes} similar successes and {failures} similar failures. "
+            f"The resulting risk level is {risk_level.value.lower()} because the closest historical cases were used as the primary signal."
+        )
+
+    def _store_verification(self, result: VerificationResult, user_id: str | None, context: Dict[str, Any] | None) -> None:
+        collection = None
+        try:
+            if self.db is not None:
+                collection = self.db["verifications"]
+            else:
+                from services.mongodb_service import get_db
+
+                collection = get_db()["verifications"]
+        except Exception:
+            return
+
+        if collection is None:
+            return
+
+        try:
+            collection.create_index("timestamp")
+            collection.create_index("is_verified")
+            collection.insert_one(
+                {
+                    "claim": result.claim,
+                    "is_verified": result.is_verified,
+                    "risk_score": result.risk_score,
+                    "confidence_score": result.confidence_score,
+                    "risk_level": result.risk_level.value,
+                    "evidence": result.evidence,
+                    "reasoning": result.reasoning,
+                    "mitigations": result.mitigations,
+                    "blocking_reason": result.blocking_reason,
+                    "timestamp": datetime.utcnow(),
+                    "user_id": user_id,
+                    "context": context or {},
+                }
+            )
+        except Exception as exc:
+            logger.warning("Trust Agent verification persistence failed: %s", exc)
+
+
+def get_trust_agent(groq: GroqService | None = None, db: Any | None = None, search_service: Any | None = None) -> TrustAgent:
+    """Return a singleton trust agent used by compatibility routers."""
+    global _TRUST_AGENT_SINGLETON
+    try:
+        _TRUST_AGENT_SINGLETON
+    except NameError:
+        _TRUST_AGENT_SINGLETON = None
+
+    if _TRUST_AGENT_SINGLETON is None:
+        _TRUST_AGENT_SINGLETON = TrustAgent(groq=groq, db=db, search_service=search_service)
+    return _TRUST_AGENT_SINGLETON
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

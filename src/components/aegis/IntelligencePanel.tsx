@@ -34,24 +34,10 @@ function PanelHeader({ icon: Icon, title, step }: { icon: any; title: string; st
   );
 }
 
-const PLACEHOLDER_NODES = [
-  { id: "n1", label: "Mission Intent", weight: 1, group: "task" as const },
-  { id: "n2", label: "Context A", weight: 0.7, group: "context" as const },
-  { id: "n3", label: "Context B", weight: 0.6, group: "context" as const },
-  { id: "n4", label: "Context C", weight: 0.55, group: "context" as const },
-  { id: "n5", label: "Outcome", weight: 0.8, group: "outcome" as const },
-];
-
-const PLACEHOLDER_FLOW = `flowchart TD
-  A([Commander]) --> B[Trust]
-  B --> C[Retrieval]
-  C --> D[Predictor]
-  D --> E([Execution])`;
-
 export const IntelligencePanel = memo(function IntelligencePanel({ data, language }: Props) {
   const t = useT(language);
-  const nodes = data?.memory_nodes ?? PLACEHOLDER_NODES;
-  const flow = data?.workflow ?? PLACEHOLDER_FLOW;
+  const nodes = data?.memory_nodes ?? [];
+  const flow = data?.workflow ?? "flowchart TD\n  A[\"Mission Pending\"]";
   const logs = data?.logs ?? [];
 
   return (
@@ -80,9 +66,9 @@ export const IntelligencePanel = memo(function IntelligencePanel({ data, languag
         {/* Workflow */}
         <div className="border-b border-border/70 shrink-0">
           <PanelHeader icon={GitBranch} title={t("workflow")} step="B" />
-          <div className="p-4 max-h-[220px] overflow-auto">
-            <MermaidDiagram chart={flow} />
-          </div>
+            <div className="p-4 min-h-[200px] flex items-center justify-center">
+              <MermaidDiagram chart={flow} id="workflow-graph" />
+            </div>
         </div>
 
         {/* Logs */}

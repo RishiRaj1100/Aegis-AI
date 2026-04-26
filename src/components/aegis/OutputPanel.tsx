@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Brain,
@@ -128,6 +128,13 @@ function LoadingState() {
 export const OutputPanel = memo(function OutputPanel({ data, loading, error, language, onRetry }: Props) {
   const t = useT(language);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [debateTab, setDebateTab] = useState("final");
+
+  useEffect(() => {
+    if (data?.task_id) {
+      setDebateTab("final");
+    }
+  }, [data?.task_id]);
 
   if (error && !loading) {
     return (
@@ -152,19 +159,19 @@ export const OutputPanel = memo(function OutputPanel({ data, loading, error, lan
   }
 
   const riskMeta: Record<RiskLevel, { label: string; cls: string; ring: string; icon: any }> = {
-    low: {
+    LOW: {
       label: t("lowRisk"),
       cls: "bg-success/10 text-success border-success/30",
       ring: "from-success/40 to-success/0",
       icon: CheckCircle2,
     },
-    medium: {
+    MEDIUM: {
       label: t("mediumRisk"),
       cls: "bg-warning/10 text-warning border-warning/30",
       ring: "from-warning/40 to-warning/0",
       icon: AlertTriangle,
     },
-    high: {
+    HIGH: {
       label: t("highRisk"),
       cls: "bg-destructive/10 text-destructive border-destructive/30",
       ring: "from-destructive/40 to-destructive/0",
@@ -183,7 +190,7 @@ export const OutputPanel = memo(function OutputPanel({ data, loading, error, lan
     failed: t("outcomeFailed"),
   };
 
-  const risk = riskMeta[data.risk_level];
+  const risk = riskMeta[data.risk_level] ?? riskMeta.MEDIUM;
   const RiskIcon = risk.icon;
   const probabilityPct = Math.round(data.success_probability * 100);
 
@@ -299,7 +306,7 @@ export const OutputPanel = memo(function OutputPanel({ data, loading, error, lan
                       )}
                     >
                       <RiskIcon className="h-7 w-7" />
-                      {data.risk_level === "high" && (
+                      {data.risk_level === "HIGH" && (
                         <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-destructive animate-ping" />
                       )}
                     </div>
@@ -380,20 +387,20 @@ export const OutputPanel = memo(function OutputPanel({ data, loading, error, lan
               <CardContent>
                 <ScrollArea className="max-h-56 pr-3">
                   <div className="space-y-2">
-                    {data.similar_tasks.map((tk) => (
+                    {data.similar_tasks.map((tk, idx) => (
                       <div
-                        key={tk.id}
+                        key={`${tk.task}-${idx}`}
                         className="flex items-center gap-3 p-3 rounded-md border border-border/60 bg-background/30 hover:bg-background/50 transition group"
                       >
-                        <span className="font-mono text-[10px] text-muted-foreground w-16">{tk.id}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground w-16">#{idx + 1}</span>
                         <span className="text-sm flex-1 truncate group-hover:text-primary transition-colors">
-                          {tk.title}
+                          {tk.task}
                         </span>
                         <Badge
                           variant="outline"
-                          className={cn("font-mono text-[10px]", outcomeBadge[tk.outcome])}
+                          className={cn("font-mono text-[10px]", outcomeBadge[(tk.outcome as keyof typeof outcomeBadge) ?? "partial"])}
                         >
-                          {outcomeLabel[tk.outcome]}
+                          {outcomeLabel[(tk.outcome as keyof typeof outcomeLabel) ?? "partial"]}
                         </Badge>
                         <span className="font-mono text-[10px] text-muted-foreground w-12 text-right">
                           {Math.round(tk.similarity * 100)}%
@@ -413,13 +420,16 @@ export const OutputPanel = memo(function OutputPanel({ data, loading, error, lan
                 <SectionTitle icon={Users} label={t("multiAgentDebate")} step="07" />
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="final" className="w-full">
-                  <TabsList className="grid grid-cols-3 bg-background/40 border border-border/60">
+                <Tabs value={debateTab} onValueChange={setDebateTab} className="w-full" key={data.task_id}>
+                  <TabsList className="grid grid-cols-4 bg-background/40 border border-border/60">
                     <TabsTrigger value="optimist" className="text-xs data-[state=active]:bg-success/10 data-[state=active]:text-success">
                       {t("optimistAgent")}
                     </TabsTrigger>
                     <TabsTrigger value="risk" className="text-xs data-[state=active]:bg-destructive/10 data-[state=active]:text-destructive">
                       {t("riskAgent")}
+                    </TabsTrigger>
+                    <TabsTrigger value="executor" className="text-xs data-[state=active]:bg-warning/10 data-[state=active]:text-warning">
+                      Executor
                     </TabsTrigger>
                     <TabsTrigger value="final" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
                       <Sparkles className="h-3 w-3 mr-1" /> Final
@@ -434,6 +444,11 @@ export const OutputPanel = memo(function OutputPanel({ data, loading, error, lan
                   <TabsContent value="risk" className="mt-3">
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
                       <p className="text-sm leading-relaxed text-foreground/90">{data.agent_debate.risk}</p>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="executor" className="mt-3">
+                    <div className="rounded-lg border border-warning/30 bg-warning/5 p-4">
+                      <p className="text-sm leading-relaxed text-foreground/90">{data.agent_debate.executor}</p>
                     </div>
                   </TabsContent>
                   <TabsContent value="final" className="mt-3">

@@ -202,6 +202,35 @@ async def manual_override(
     return await pipeline.intelligence.save_manual_override(request.task_id, request.decision, request.notes)
 
 
+@router.get("/memory-graph", response_model=ExecutionGraphResponse, summary="Get global memory experience graph")
+async def memory_graph(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    pipeline=Depends(_get_pipeline),
+) -> ExecutionGraphResponse:
+    return await pipeline.intelligence.build_memory_graph(user_id=_user_id(current_user))
+
+
+@router.post("/followup", summary="Multimodal follow-up discussion")
+async def follow_up(
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    pipeline=Depends(_get_pipeline),
+) -> Dict[str, Any]:
+    task_id = request.get("task_id")
+    message = request.get("message")
+    language = request.get("language", "en-IN")
+    
+    if not task_id or not message:
+        raise HTTPException(status_code=400, detail="task_id and message are required")
+        
+    return await pipeline.process_followup(
+        task_id=task_id,
+        message=message,
+        language=language,
+        user_id=_user_id(current_user)
+    )
+
+
 @router.get("/health", summary="Intelligence health")
 async def intelligence_health(
     current_user: Dict[str, Any] = Depends(get_current_user),

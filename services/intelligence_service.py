@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import warnings
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -40,6 +41,9 @@ from models.schemas import (
     StrategyProfileResponse,
 )
 from services.explainability import ExplainabilityService
+
+# Suppress scikit-learn version warnings for pretrained models
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.base")
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -100,16 +104,26 @@ class IntelligenceService:
         self.reflector = reflector
         self.explainability = ExplainabilityService()
         
-        # Load ML Catalyst Model if available
+        # Load ML Catalyst Models if available
         self.catalyst_model = None
+        self.delay_model = None
         if ML_AVAILABLE:
-            model_path = os.path.join("models", "pretrained", "catalyst_success_predictor.pkl")
-            if os.path.exists(model_path):
+            success_path = os.path.join("models", "pretrained", "catalyst_success_predictor.pkl")
+            delay_path = os.path.join("models", "pretrained", "behavior_model.pkl")
+            
+            if os.path.exists(success_path):
                 try:
-                    self.catalyst_model = joblib.load(model_path)
-                    logger.info("Loaded XGBoost Catalyst Model successfully.")
+                    self.catalyst_model = joblib.load(success_path)
+                    logger.info("Loaded XGBoost Catalyst Success Model.")
                 except Exception as e:
-                    logger.warning(f"Failed to load ML Catalyst Model: {e}")
+                    logger.warning(f"Failed to load Success Model: {e}")
+                    
+            if os.path.exists(delay_path):
+                try:
+                    self.delay_model = joblib.load(delay_path)
+                    logger.info("Loaded Logistic Delay Model.")
+                except Exception as e:
+                    logger.warning(f"Failed to load Delay Model: {e}")
 
     # ── Generic text helpers ───────────────────────────────────────────────
 
@@ -167,13 +181,70 @@ class IntelligenceService:
         )
 
     def _build_mermaid(self, nodes: Sequence[ExecutionGraphNode], edges: Sequence[ExecutionGraphEdge]) -> str:
-        lines = ["graph TD"]
+        lines = ["flowchart TD"]
         for node in nodes:
-            label = node.label.replace('"', "'")
-            lines.append(f'  {node.id}["{label}"]')
+            # Robustly sanitize labels for Mermaid: replace double quotes with single, remove newlines
+            label = str(node.label).replace('"', "'").replace("\n", " ").replace("\r", " ").strip()
+            # Ensure node IDs are valid (alphanumeric + underscores)
+            safe_id = re.sub(r"[^a-zA-Z0-9_]", "_", str(node.id))
+            lines.append(f'  {safe_id}["{label}"]')
         for edge in edges:
-            lines.append(f"  {edge.source} --> {edge.target}")
+            src = re.sub(r"[^a-zA-Z0-9_]", "_", str(edge.source))
+            tgt = re.sub(r"[^a-zA-Z0-9_]", "_", str(edge.target))
+            lines.append(f"  {src} --> {tgt}")
         return "\n".join(lines)
+
+    def _extract_plan_phases(self, execution_plan: str) -> List[str]:
+        phases: List[str] = []
+        for raw_line in execution_plan.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            stripped = line.lstrip("#").strip()
+            if stripped.lower().startswith("phase"):
+                phases.append(stripped)
+        return phases
+
+    def _context_support_score(self, context: Optional[Dict[str, Any]]) -> float:
+        if not context:
+            return 0.45
+
+        signals = 0.45
+        lowered_keys = {str(key).lower(): value for key, value in context.items()}
+        if lowered_keys.get("budget"):
+            signals += 0.08
+        if lowered_keys.get("team_size"):
+            try:
+                team_size = float(lowered_keys.get("team_size", 0))
+                if team_size >= 3:
+                    signals += 0.1
+                elif team_size == 1:
+                    signals -= 0.03
+            except Exception:
+                signals += 0.02
+        if lowered_keys.get("deadline") or lowered_keys.get("days_until_deadline"):
+            signals += 0.06
+        if lowered_keys.get("blockers"):
+            blockers = lowered_keys.get("blockers")
+            blocker_count = len(blockers) if isinstance(blockers, list) else 1
+            signals -= min(blocker_count * 0.04, 0.15)
+        if lowered_keys.get("resources"):
+            signals += 0.05
+        return self._clamp(signals, 0.05, 0.95)
+
+    def _case_signal(self, similar: Sequence[_TaskSimilarity]) -> float:
+        if not similar:
+            return 0.5
+        total = sum(item.similarity for item in similar)
+        resolved = [item for item in similar if str(getattr(item, "status", "")).upper() in {"COMPLETED", "FAILED"}]
+        if resolved:
+            completed = sum(item.similarity for item in resolved if str(getattr(item, "status", "")).upper() == "COMPLETED")
+            resolved_total = sum(item.similarity for item in resolved)
+            resolved_rate = completed / resolved_total if resolved_total > 0 else 0.5
+        else:
+            resolved_rate = 0.5
+        avg_similarity = total / len(similar)
+        return self._clamp((resolved_rate * 0.6) + (avg_similarity * 0.4), 0.05, 0.95)
 
     def _risk_from_probability(self, probability: float) -> RiskLevel:
         if probability >= 0.75:
@@ -271,11 +342,29 @@ class IntelligenceService:
 
         nodes: List[ExecutionGraphNode] = [ExecutionGraphNode(id="goal", label=task.get("goal", "Goal"), type="goal", status=task.get("status", "PENDING"))]
         edges: List[ExecutionGraphEdge] = []
-        previous_id = "goal"
 
         raw_subtasks = task.get("subtasks", []) or []
         if not isinstance(raw_subtasks, list):
             raw_subtasks = []
+
+        phases = self._extract_plan_phases(str(task.get("execution_plan", "")))
+        phase_ids: List[str] = []
+        if phases:
+            nodes.append(ExecutionGraphNode(id="phase_anchor", label="Execution Plan", type="phase", status=task.get("status", "PENDING")))
+            edges.append(ExecutionGraphEdge(source="goal", target="phase_anchor", label="plan"))
+            for index, phase_label in enumerate(phases, start=1):
+                phase_id = f"phase_{index}"
+                phase_ids.append(phase_id)
+                nodes.append(
+                    ExecutionGraphNode(
+                        id=phase_id,
+                        label=phase_label,
+                        type="phase",
+                        status=task.get("status", "PENDING"),
+                    )
+                )
+                parent_id = "phase_anchor" if index == 1 else phase_ids[index - 2]
+                edges.append(ExecutionGraphEdge(source=parent_id, target=phase_id, label="sequence"))
 
         for index, subtask in enumerate(raw_subtasks, start=1):
             if not isinstance(subtask, dict):
@@ -289,7 +378,12 @@ class IntelligenceService:
                     status=task.get("status", "PENDING"),
                 )
             )
-            edges.append(ExecutionGraphEdge(source=previous_id, target=node_id, label="sequence"))
+            if phase_ids:
+                phase_index = min((index - 1) * len(phase_ids) // max(len(raw_subtasks), 1), len(phase_ids) - 1)
+                edges.append(ExecutionGraphEdge(source=phase_ids[phase_index], target=node_id, label="executes"))
+            else:
+                previous_id = "goal" if index == 1 else f"step_{index - 1}"
+                edges.append(ExecutionGraphEdge(source=previous_id, target=node_id, label="sequence"))
             dependencies = subtask.get("dependencies", []) or []
             if not isinstance(dependencies, list):
                 dependencies = [dependencies]
@@ -309,11 +403,28 @@ class IntelligenceService:
                     )
                 )
                 edges.append(ExecutionGraphEdge(source=dependency_id, target=node_id, label="depends_on"))
-            previous_id = node_id
 
         end_id = "result"
-        nodes.append(ExecutionGraphNode(id=end_id, label="Outcome", type="outcome", status=task.get("status", "PENDING")))
-        edges.append(ExecutionGraphEdge(source=previous_id, target=end_id, label="delivers"))
+        outcome_label = f"Outcome: {task.get('status', 'PENDING')}"
+        outcome_notes = str(task.get("outcome_notes", "")).strip()
+        if outcome_notes:
+            outcome_label = f"{outcome_label} | {outcome_notes[:60]}"
+        nodes.append(ExecutionGraphNode(id=end_id, label=outcome_label, type="outcome", status=task.get("status", "PENDING")))
+
+        if phase_ids:
+            edges.append(ExecutionGraphEdge(source=phase_ids[-1], target=end_id, label="delivers"))
+        elif raw_subtasks:
+            edges.append(ExecutionGraphEdge(source=f"step_{len(raw_subtasks)}", target=end_id, label="delivers"))
+        else:
+            edges.append(ExecutionGraphEdge(source="goal", target=end_id, label="delivers"))
+
+        reflections = await self.memory.get_reflections(task_id)
+        if reflections:
+            latest = reflections[0]
+            reflection_label = str(latest.get("lesson", "Reflection note"))[:90]
+            nodes.append(ExecutionGraphNode(id="reflection", label=reflection_label, type="memory", status="recorded"))
+            edges.append(ExecutionGraphEdge(source=end_id, target="reflection", label="learns_from"))
+
         mermaid = self._build_mermaid(nodes, edges)
         return ExecutionGraphResponse(task_id=task_id, goal=task.get("goal", ""), nodes=nodes, edges=edges, mermaid=mermaid)
 
@@ -341,6 +452,15 @@ class IntelligenceService:
             similarity = self._jaccard(goal, self._task_text(task))
             if similarity <= 0:
                 continue
+            updated_at = task.get("updated_at") or task.get("created_at")
+            if hasattr(updated_at, "timestamp"):
+                age_days = max((datetime.utcnow() - updated_at).days, 0)
+                similarity += self._clamp(1.0 - min(age_days / 30.0, 1.0), 0.0, 1.0) * 0.08
+            status = str(task.get("status", "")).upper()
+            if status == "COMPLETED":
+                similarity += 0.03
+            elif status == "FAILED":
+                similarity += 0.01
             scored.append(_TaskSimilarity(task=task, similarity=similarity))
 
         scored.sort(key=lambda item: item.similarity, reverse=True)
@@ -435,21 +555,42 @@ class IntelligenceService:
         resolved = [task for task in success_tasks if task.get("status") in {"COMPLETED", "FAILED"}]
         success_rate = sum(1 for task in resolved if task.get("status") == "COMPLETED") / len(resolved) if resolved else 0.5
         similarity_score = mean([task.similarity for task in similar]) if similar else 0.0
-        
+        case_signal = self._case_signal(similar)
+        context_signal = self._context_support_score(context)
+
         trust_comps = {"goal_clarity": 0.5, "information_quality": 0.5, "execution_feasibility": 0.5, "risk_manageability": 0.5, "resource_adequacy": 0.5, "external_uncertainty": 0.5}
         num_subtasks = 5
+        task_status = "PENDING"
+        reflections: List[Dict[str, Any]] = []
         if task_id:
             task_doc = await self.memory.get_task(task_id, user_id=user_id)
             if task_doc:
-                if "trust_components" in task_doc and task_doc["trust_components"]:
+                if task_doc.get("trust_components"):
                     trust_comps.update(task_doc["trust_components"])
-                if "subtasks" in task_doc:
+                if task_doc.get("subtasks"):
                     num_subtasks = len(task_doc["subtasks"])
-                    
+                task_status = str(task_doc.get("status", "PENDING"))
+                reflections = await self.memory.get_reflections(task_id)
+
+        trust_signal = mean(
+            [
+                float(trust_comps.get("goal_clarity", 0.5)),
+                float(trust_comps.get("information_quality", 0.5)),
+                float(trust_comps.get("execution_feasibility", 0.5)),
+                float(trust_comps.get("risk_manageability", 0.5)),
+                float(trust_comps.get("resource_adequacy", 0.5)),
+                1.0 - float(trust_comps.get("external_uncertainty", 0.5)),
+            ]
+        )
+        reflection_signal = self._clamp(0.45 + min(len(reflections), 5) * 0.08, 0.05, 0.95) if reflections else 0.45
+
         probability = None
         shap_values: Dict[str, float] = {}
         positive_factors: List[str] = []
         negative_factors: List[str] = []
+        failure_modes: List[str] = []
+        safeguards: List[str] = []
+
         if self.catalyst_model is not None:
             try:
                 features = pd.DataFrame([{
@@ -462,41 +603,91 @@ class IntelligenceService:
                     "resource_adequacy": float(trust_comps.get("resource_adequacy", 0.5)),
                     "uncertainty": float(trust_comps.get("external_uncertainty", 0.5)),
                     "past_success_rate": float(success_rate),
-                    "similarity_score": float(similarity_score)
+                    "similarity_score": float(similarity_score),
+                    "case_signal": float(case_signal),
+                    "context_signal": float(context_signal),
+                    "trust_signal": float(trust_signal),
+                    "reflection_signal": float(reflection_signal),
                 }])
-                probability = float(self.catalyst_model.predict_proba(features)[0][1])
+                model_probability = float(self.catalyst_model.predict_proba(features)[0][1])
+                evidence_prior = self._clamp(
+                    0.34 * success_rate
+                    + 0.28 * case_signal
+                    + 0.16 * trust_signal
+                    + 0.12 * context_signal
+                    + 0.10 * reflection_signal,
+                    0.05,
+                    0.95,
+                )
+                probability = self._clamp(0.65 * model_probability + 0.35 * evidence_prior, 0.05, 0.97)
                 shap_values, positive_factors, negative_factors = self.explainability.explain_prediction(
                     model=self.catalyst_model,
                     features=features,
                     top_k=3,
                 )
-                failure_modes = ["Identified by ML Catalyst"] if probability < 0.5 else []
-                safeguards = ["ML model flagged high risk"] if probability < 0.5 else []
-                rationale = (
-                    f"Predicted {probability:.1%} success using ML Catalyst (XGBoost) with SHAP-based attribution. "
-                    f"Top decision drivers were summarized into positive and negative factors from {len(success_tasks)} historical tasks."
-                )
-                logger.info(f"ML Catalyst prediction: {probability:.3f}")
+                logger.info("ML Catalyst prediction: %.3f", probability)
             except Exception as e:
-                logger.error(f"ML Catalyst prediction failed: {e}. Falling back to heuristic.")
+                logger.error("ML Catalyst prediction failed: %s. Falling back to evidence blend.", e)
                 probability = None
 
         if probability is None:
-            probability, failure_modes, safeguards = self._heuristic_probability(goal, context, confidence, similarity_score, success_rate)
-            positive_factors = [
-                "Historical success trend supports execution" if success_rate >= 0.5 else "Some prior tasks completed under similar conditions",
-                "Goal contains actionable signals",
-            ]
-            negative_factors = [
-                "Limited high-similarity historical matches" if similarity_score < 0.3 else "Residual execution uncertainty remains",
-            ]
-            rationale = (
-                f"Predicted using {len(similar)} similar historical tasks, current confidence"
-                f" {confidence if confidence is not None else 'n/a'}, and recent success rate {success_rate:.0%}."
+            probability = self._clamp(
+                0.38 * success_rate
+                + 0.26 * case_signal
+                + 0.18 * trust_signal
+                + 0.10 * context_signal
+                + 0.08 * reflection_signal,
+                0.05,
+                0.97,
             )
-            
+            if success_rate < 0.5:
+                failure_modes.append("Historical resolved tasks suggest below-average completion odds.")
+                safeguards.append("Reduce scope before execution.")
+            else:
+                positive_factors.append("Historical task outcomes are at least neutral.")
+            if case_signal < 0.5:
+                failure_modes.append("Nearest similar cases do not strongly support success.")
+                safeguards.append("Ask for more context or evidence.")
+            else:
+                positive_factors.append("The nearest historical cases provide supporting evidence.")
+            if trust_signal < 0.5:
+                failure_modes.append("Goal clarity or resource adequacy is weak.")
+                safeguards.append("Clarify ownership and resource commitments.")
+            else:
+                positive_factors.append("The trust components indicate the goal is reasonably formed.")
+            if context_signal < 0.45:
+                failure_modes.append("Provided context suggests pressure or missing inputs.")
+                safeguards.append("Add checkpoints and block if key inputs are absent.")
+            if reflections:
+                positive_factors.append("Past feedback and reflections provide calibration signals.")
+            if not positive_factors:
+                positive_factors.append("The goal is analyzable, but evidence is thin.")
+            rationale = (
+                f"Predicted using {len(resolved)} resolved historical tasks, {len(similar)} similarity matches, and {len(reflections)} prior reflections. "
+                f"The evidence prior is driven by task history instead of a static default probability."
+            )
+        else:
+            failure_modes = []
+            safeguards = []
+            if success_rate < 0.5:
+                failure_modes.append("Historical resolved tasks are trending toward failure.")
+                safeguards.append("Review the closest completed/failed cases before acting.")
+            if case_signal < 0.5:
+                failure_modes.append("The nearest historical cases are not strongly supportive.")
+                safeguards.append("Collect more evidence from comparable tasks.")
+            if trust_signal < 0.5:
+                failure_modes.append("Task definitions or resource signals are weak.")
+                safeguards.append("Tighten scope and confirm resource availability.")
+            if context_signal < 0.45:
+                failure_modes.append("Context suggests pressure or missing information.")
+                safeguards.append("Add explicit assumptions and approval checkpoints.")
+            rationale = (
+                f"Predicted {probability:.1%} success from the catalyst model blended with historical task outcomes, similar-case signals, and reflection history. "
+                f"The model was calibrated against {len(resolved)} resolved tasks and {len(similar)} nearest matches."
+            )
+
         risk_level = self._risk_from_probability(probability)
-        human_review_required = probability < 0.65 or any("review" in safeguard.lower() for safeguard in safeguards)
+        human_review_required = probability < 0.65 or any("review" in safeguard.lower() for safeguard in safeguards) or task_status in {"FAILED", "BLOCKED"}
         
         return OutcomePredictionResponse(
             task_id=task_id,
@@ -569,9 +760,16 @@ class IntelligenceService:
                 current_id = node_id(line)
                 nodes[current_id] = line
 
-        mermaid_lines = [f"graph TD", f'  title["{title}"]']
+        mermaid_lines = ["flowchart TD"]
+        # Add a title node if title is provided
+        if title:
+            safe_title = title.replace('"', "'").replace("\n", " ")
+            mermaid_lines.append(f'  title["{safe_title}"]')
+            
         for node_id_value, label in nodes.items():
-            mermaid_lines.append(f'  {node_id_value}["{label.replace("\"", "\'")}"]')
+            # Robustly sanitize labels: replace double quotes with single, remove newlines
+            safe_label = str(label).replace('"', "'").replace("\n", " ").replace("\r", " ").strip()
+            mermaid_lines.append(f'  {node_id_value}["{safe_label}"]')
         for source, target in edges:
             mermaid_lines.append(f"  {source} --> {target}")
         return {
@@ -688,6 +886,69 @@ class IntelligenceService:
         response = await self.refresh_reflection_report(sample_size=20)
         return {"generated_at": response.generated_at.isoformat(), "lessons": len(response.lessons)}
 
+    async def build_memory_graph(self, user_id: Optional[str] = None) -> MemoryGraphResponse:
+        """
+        Build a global experience graph for a user, connecting similar missions
+        to show how AegisAI transfers knowledge between them.
+        """
+        tasks = await self._all_tasks(user_id=user_id)
+        if not tasks:
+            return ExecutionGraphResponse(
+                task_id="global",
+                goal="Memory Graph",
+                nodes=[],
+                edges=[],
+                mermaid="graph TD\n  Empty[No missions recorded]"
+            )
+
+        nodes: List[ExecutionGraphNode] = []
+        edges: List[ExecutionGraphEdge] = []
+        
+        # Limit to recent 50 tasks for performance in the graph
+        display_tasks = tasks[:50]
+        
+        for task in display_tasks:
+            nodes.append(ExecutionGraphNode(
+                id=str(task.get("task_id", "")),
+                label=str(task.get("goal", ""))[:40] + "...",
+                type="task",
+                status=str(task.get("status", "completed")).lower()
+            ))
+
+        # Calculate similarity edges between missions
+        for i, t1 in enumerate(display_tasks):
+            for j, t2 in enumerate(display_tasks):
+                if i >= j: continue
+                
+                similarity = self._jaccard(
+                    t1.get("goal", ""), 
+                    t2.get("goal", "")
+                )
+                
+                # If similarity is above threshold, create an edge
+                if similarity >= 0.25:
+                    edges.append(ExecutionGraphEdge(
+                        source=str(t1.get("task_id", "")),
+                        target=str(t2.get("task_id", "")),
+                        label="similar_to"
+                    ))
+
+        # Build Mermaid string
+        mermaid_lines = ["graph LR"]
+        for node in nodes:
+            label = node.label.replace('"', "'")
+            mermaid_lines.append(f'  {node.id}["{label}"]')
+        for edge in edges:
+            mermaid_lines.append(f"  {edge.source} -- {edge.label} --> {edge.target}")
+            
+        return ExecutionGraphResponse(
+            task_id="global",
+            goal="Memory Graph",
+            nodes=nodes,
+            edges=edges,
+            mermaid="\n".join(mermaid_lines)
+        )
+
     # ── Internal analytics ──────────────────────────────────────────────────
 
     def _compute_drift(self, tasks: Sequence[Dict[str, Any]]) -> float:
@@ -705,3 +966,4 @@ class IntelligenceService:
             else 0.5
         )
         return self._clamp(abs(recent_conf - baseline_conf) / 100.0 + abs(recent_success - baseline_success) / 2.0, 0.0, 1.0)
+

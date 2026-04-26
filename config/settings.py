@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    OPENROUTER_REASONING_MODEL: str = "mistralai/mistral-7b-instruct:free"
     OPENROUTER_SITE_URL: str = "http://localhost:8000"
     OPENROUTER_APP_NAME: str = "AegisAI"
 
@@ -69,7 +70,7 @@ class Settings(BaseSettings):
     PINECONE_INDEX_NAME: str = "aegis-task-semantic"
     PINECONE_DIMENSION: int = 1024
     PINECONE_METRIC: str = "cosine"
-    PINECONE_HOST: Optional[str] = "https://aegis-task-semantic-ofizsb6.svc.aped-4627-b74a.pinecone.io"
+    PINECONE_HOST: Optional[str] = None
     PINECONE_EMBEDDING_MODEL: str = "llama-text-embed-v2"
 
     # ── Trust engine defaults (6D holistic model) ───────────────────────────
@@ -110,6 +111,9 @@ class Settings(BaseSettings):
     RED_TEAM_ENABLED: bool = False
     TEMPORAL_MONITOR_ENABLED: bool = False
     ANALYTICS_ENABLED: bool = True
+    USE_LOCAL_MODEL: bool = False
+    LOCAL_MODEL_PATH: str = "Aegis_fine_tuned"
+    LOCAL_MODEL_BASE: str = "mistralai/Mistral-7B-Instruct-v0.2"
     INTELLIGENCE_REFLECTION_INTERVAL_HOURS: int = 24
 
     # ── Pipeline Controls ──────────────────────────────────────────────────────

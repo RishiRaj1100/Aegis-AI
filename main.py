@@ -98,6 +98,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     _intelligence_scheduler_task = asyncio.create_task(_scheduled_reflection_reports())
 
+    # ── Background Local Model Loading ────────────────────────────────────────
+    if settings.USE_LOCAL_MODEL:
+        try:
+            from services.local_inference_service import get_local_inference_service
+            get_local_inference_service().load_in_background()
+        except Exception as exc:
+            logger.warning("Could not start local model background loading: %s", exc)
+
     logger.info("AegisAI pipeline ready. All agents initialised.")
     logger.info("=" * 60)
 
@@ -151,30 +159,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS middleware ───────────────────────────────────────────────────────────
+# ── CORS Configuration ────────────────────────────────────────────────────────
 
 cors_origins = [
-    "http://localhost:3000",      # Frontend dev server (Vite)
-    "http://localhost:8000",      # Backend served frontend
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://localhost:8080",
     "http://127.0.0.1:8000",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:8080",
 ]
 if settings.FRONTEND_URL:
     cors_origins.extend(
         [origin.strip() for origin in settings.FRONTEND_URL.split(",") if origin.strip()]
     )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# (CORS middleware itself is applied at the bottom to ensure it wraps all errors)
+
+
+# Removed legacy block
 
 # ── Request timing middleware ─────────────────────────────────────────────────
 
-_PIPELINE_TIMEOUT_SECONDS = 90  # hard ceiling: /goal may call Groq 5× sequentially
+_PIPELINE_TIMEOUT_SECONDS = 300  # 5 minute ceiling: fallback providers (OpenRouter) can be slow sequential calls
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -208,6 +215,16 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error("Validation error on %s %s: %s", request.method, request.url, exc.errors())
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors(), "body": str(exc.body)},
+    )
+
 # ── Global exception handler ──────────────────────────────────────────────────
 
 @app.exception_handler(Exception)
@@ -236,7 +253,10 @@ from routers.monitoring_router import router as monitoring_router
 from routers.websocket_router import router as websocket_router
 from routers.ui_bridge_router import router as ui_bridge_router
 from routers.debate_router import router as debate_router
+from routers.autonomous_router import router as autonomous_router
+from routers.evaluator_compat_router import router as evaluator_compat_router
 
+app.include_router(evaluator_compat_router)
 app.include_router(auth_router)
 app.include_router(goal_router)
 app.include_router(plan_router)
@@ -252,55 +272,88 @@ app.include_router(monitoring_router)
 app.include_router(websocket_router)
 app.include_router(ui_bridge_router)
 app.include_router(debate_router)
+app.include_router(autonomous_router)
+
+
+@app.middleware("http")
+async def disable_api_caching(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith((
+        "/goal",
+        "/plan",
+        "/confidence",
+        "/analytics",
+        "/intelligence",
+        "/debate",
+        "/feedback",
+        "/task_history",
+        "/execution_graph",
+        "/explainability",
+        "/similar_tasks",
+    )):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+# ── Final Middleware Wrap (CORS MUST BE OUTER-MOST) ───────────────────────────
+
+# (CORS middleware applied here)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Frontend static files and SPA routing ────────────────────────────────────
 
-_workspace_root = os.path.dirname(__file__)
-_frontend_candidates = [
-    os.path.join(_workspace_root, "aegisai-source", "dist"),
-    os.path.join(_workspace_root, "frontend", "dist"),
-]
-_frontend_dir = next((d for d in _frontend_candidates if os.path.isdir(d)), _frontend_candidates[0])
-_index_path = os.path.join(_frontend_dir, "index.html")
+from pathlib import Path
+
+def discover_frontend():
+    """Robustly find the frontend directory."""
+    base = Path(__file__).resolve().parent
+    for path in [base, base.parent]:
+        candidate = path / "dist"
+        if candidate.is_dir() and (candidate / "index.html").exists():
+            return candidate
+    return base / "dist"
+
+_frontend_dir = discover_frontend()
+_index_path = _frontend_dir / "index.html"
+
+print(f"INFO: Frontend discovered at: {_frontend_dir}")
+print(f"INFO: Dashboard status: {'FOUND' if _index_path.exists() else 'NOT FOUND'}")
 
 # Mount static assets (CSS, JS, etc. from dist/assets)
-if os.path.isdir(_frontend_dir):
-    assets_dir = os.path.join(_frontend_dir, "assets")
-    if os.path.isdir(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-@app.get("/ui", tags=["System"], summary="AegisAI Web Dashboard", include_in_schema=False)
-async def serve_ui():
-    """Serve the AegisAI single-page frontend application at /ui."""
-    if not os.path.isfile(_index_path):
-        return JSONResponse(
-            status_code=404,
-            content={"detail": "Frontend not built. Run 'npm run build' in frontend directory."},
-        )
-    return FileResponse(_index_path, media_type="text/html")
-
+if _frontend_dir.is_dir():
+    assets_dir = _frontend_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 # ── Health & system routes ────────────────────────────────────────────────────
 
-@app.get("/", tags=["System"], summary="Root - system info / frontend", include_in_schema=False)
-async def root(request: Request):
-    """
-    Root endpoint: serves frontend for browser requests, API info for API requests.
-    Detects request type via Accept header.
-    """
-    accept_header = request.headers.get("accept", "").lower()
+@app.get("/", tags=["System"], include_in_schema=False)
+async def root():
+    """Serve the SPA at root."""
+    if _index_path.exists():
+        return FileResponse(str(_index_path))
+    return JSONResponse(status_code=404, content={"detail": "Frontend not found"})
 
-    # If browser is requesting HTML, serve the frontend
-    if "text/html" in accept_header or "application/xhtml" in accept_header:
-        if os.path.isfile(_index_path):
-            return FileResponse(_index_path, media_type="text/html")
-        else:
-            return JSONResponse(
-                status_code=404,
-                content={"detail": "Frontend not available."},
-            )
+@app.get("/ui", tags=["System"], include_in_schema=False)
+async def serve_ui():
+    """Serve the dashboard at /ui."""
+    if _index_path.exists():
+        return FileResponse(str(_index_path))
+    return JSONResponse(status_code=404, content={"detail": "Dashboard not found"})
 
-    # Otherwise return API info
+@app.get("/api/info", tags=["System"], summary="API System Info")
+async def get_api_info():
+    """Return API system info."""
     return {
         "system": settings.APP_NAME,
         "version": settings.APP_VERSION,
@@ -401,24 +454,18 @@ async def list_agents():
 async def spa_fallback(request: Request, path_name: str):
     """
     Catch-all route: serves index.html for any route not handled by API endpoints.
-    This allows React Router to handle client-side routing (e.g., /login, /register, /dashboard).
+    This allows React Router to handle client-side routing.
     """
     # Skip if path looks like an API endpoint or known non-SPA route
-    if path_name.startswith(("api/", "docs", "redoc", "openapi")):
+    if path_name.startswith(("api/", "docs", "redoc", "openapi", "assets/")):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
 
     # Serve index.html for all other routes
-    if os.path.isfile(_index_path):
-        return FileResponse(_index_path, media_type="text/html")
+    if _index_path.exists():
+        return FileResponse(str(_index_path), media_type="text/html")
     return JSONResponse(
         status_code=404,
-        content={"detail": "Frontend not available."},
-    )
-
-
-    return JSONResponse(
-        status_code=404,
-        content={"detail": "Frontend not available"},
+        content={"detail": "Frontend assets not found at fallback level."},
     )
 
 

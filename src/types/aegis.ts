@@ -1,56 +1,99 @@
-// AegisAI domain types — shared across UI + API hook
-export type RiskLevel = "low" | "medium" | "high";
+// Shared TypeScript types for AegisAI API responses
+
+export interface Subtask {
+  id?: string;
+  title: string;
+  name?: string;
+  description?: string;
+  trust_score?: number;
+  confidence?: number;
+  status?: 'pending' | 'active' | 'done' | 'failed';
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  deadline_days?: number;
+}
+
+export interface DebateResult {
+  optimist?: string;
+  risk_analyst?: string;
+  executor?: string;
+  critic?: string;
+  final_decision?: string;
+  reasoning?: string;
+  consensus_score?: number;
+}
+
+export interface ShapFactor {
+  feature: string;
+  value: number;
+  impact: 'positive' | 'negative';
+}
 
 export interface SimilarTask {
   id: string;
-  title: string;
-  outcome: "success" | "partial" | "failed";
-  similarity: number; // 0..1
+  goal: string;
+  success: boolean;
+  confidence?: number;
+  completed_at?: string;
 }
 
-export interface AgentDebate {
-  optimist: string;
-  risk: string;
-  final_decision: string;
+export interface TrustDimension {
+  claims?: Array<{
+    claim: string;
+    verified: boolean;
+    evidence: string[];
+  }>;
+  dimensions?: {
+    goal_clarity: number;
+    information_quality: number;
+    execution_feasibility: number;
+    risk_manageability: number;
+    resource_adequacy: number;
+    external_uncertainty: number;
+  };
+  delay_risk?: number;
+  confidence_score?: number;
 }
 
-export interface WorkflowNode {
-  id: string;
-  label: string;
-  next?: string[];
+export interface AegisResponse {
+  task_id?: string;
+  goal?: string;
+  confidence?: number;
+  risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
+  processing_time_ms?: number;
+  reasoning_provider?: string;
+  plan?: {
+    goal?: string;
+    task_id?: string;
+    subtasks?: Subtask[];
+    research_insights?: string;
+    dimensions?: TrustDimension;
+    debate_results?: DebateResult;
+    reasoning?: string;
+    confidence?: number;
+    risk_level?: string;
+  };
+  subtasks?: Subtask[];
+  debate_results?: DebateResult;
+  explainability?: Record<string, number>;
+  trust_dimensions?: TrustDimension;
+  similar_tasks?: SimilarTask[];
+  reflection?: {
+    past_prediction?: number;
+    current_prediction?: number;
+    improvement_delta?: number;
+    insights?: string[];
+  };
+  model_outputs?: Record<string, unknown>;
+  system_confidence?: number;
+  fallback_used?: boolean;
+  system_trace?: string[];
 }
 
-export interface ExecutionLog {
-  ts: string; // ISO timestamp
-  level: "info" | "warn" | "error" | "success";
-  source: string;
-  message: string;
-}
-
-export interface MemoryNode {
-  id: string;
-  label: string;
-  weight: number; // 0..1
-  group: "task" | "context" | "outcome";
-}
-
-export interface DecisionResponse {
-  decision: string;
-  success_probability: number; // 0..1
-  risk_level: RiskLevel;
-  explanation: string;
-  similar_tasks: SimilarTask[];
-  agent_debate: AgentDebate;
-  workflow: string; // mermaid source
-  workflow_nodes?: WorkflowNode[];
-  logs: ExecutionLog[];
-  memory_nodes: MemoryNode[];
-  subtasks: string[];
-}
-
-export type Language = "en" | "hi";
-
-export interface TaskRequest {
-  task: string;
-  language: Language;
+export interface TaskHistory {
+  task_id: string;
+  goal: string;
+  confidence?: number;
+  risk_level?: string;
+  created_at?: string;
+  processing_time_ms?: number;
 }

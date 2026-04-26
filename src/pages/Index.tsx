@@ -25,7 +25,7 @@ const Index = () => {
         add({
           task,
           decision: res.decision,
-          risk: res.risk_level,
+          risk: res.risk_level.toLowerCase() as "low" | "medium" | "high",
           probability: res.success_probability,
         });
         toast.success(t("decisionDone"), { description: t("consensusReached") });

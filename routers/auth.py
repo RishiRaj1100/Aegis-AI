@@ -108,20 +108,26 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """
     Extract and verify JWT token from Authorization header.
-    Raises 401 if token is missing or invalid.
+    Returns a guest user if no token is provided (allows unauthenticated access for demo).
     """
+    # ── Guest / no-auth mode: return a virtual guest user ─────────────────────
     if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization header",
-        )
+        return {
+            "sub": "guest",
+            "email": "guest@aegisai.local",
+            "name": "Guest",
+            "type": "access",
+        }
 
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format (expected 'Bearer <token>')",
-        )
+        # Malformed header — still fall back to guest rather than hard-fail
+        return {
+            "sub": "guest",
+            "email": "guest@aegisai.local",
+            "name": "Guest",
+            "type": "access",
+        }
 
     token = parts[1]
     payload = user_service.verify_token(token)

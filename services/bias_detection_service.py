@@ -339,20 +339,56 @@ class BiasDetectionService:
     
     def _compute_feature_importances(self) -> Dict[str, float]:
         """
-        Compute feature importances using SHAP (simplified).
-        
-        In production, would use SHAP explainer on the Catalyst model.
+        Compute feature importances using SHAP on the Catalyst model.
         """
         try:
-            # Placeholder: would compute via SHAP values
-            # For now, return mock importances
-            return {
-                "task_complexity": 0.25,
-                "team_size": 0.15,
-                "deadline_urgency": 0.20,
-                "user_experience": 0.18,
-                "historical_success_rate": 0.22,
-            }
+            import os
+            import joblib
+            import pandas as pd
+            from services.explainability import ExplainabilityService
+            
+            model_path = os.path.join("models", "pretrained", "catalyst_success_predictor.pkl")
+            if not os.path.exists(model_path):
+                logger.warning("[BiasDetection] Catalyst model not found.")
+                return {}
+                
+            model = joblib.load(model_path)
+            
+            # Baseline feature set to evaluate SHAP
+            features = pd.DataFrame([{
+                "goal_length_words": 20, "num_subtasks": 5, "clarity": 0.6,
+                "info_quality": 0.6, "feasibility": 0.6, "manageability": 0.6,
+                "resource_adequacy": 0.6, "uncertainty": 0.4, "past_success_rate": 0.6,
+                "similarity_score": 0.5, "case_signal": 0.5, "context_signal": 0.5,
+                "trust_signal": 0.6, "reflection_signal": 0.5,
+            }])
+            
+            if hasattr(model, "feature_names_in_"):
+                # Align columns with model
+                cols = list(model.feature_names_in_)
+                for c in cols:
+                    if c not in features.columns:
+                        features[c] = 0.5
+                features = features[cols]
+                
+            explainer = ExplainabilityService()
+            shap_map, _, _ = explainer.explain_prediction(model, features, top_k=5)
+            
+            if not shap_map and hasattr(model, "feature_importances_"):
+                # Fallback to global feature importances if SHAP is missing
+                importances = model.feature_importances_
+                cols = list(model.feature_names_in_) if hasattr(model, "feature_names_in_") else list(features.columns)
+                shap_map = {name: float(imp) for name, imp in zip(cols, importances)}
+                
+            # Take absolute values and normalize to percentages
+            abs_map = {k: abs(v) for k, v in shap_map.items()}
+            total = sum(abs_map.values())
+            if total > 0:
+                abs_map = {k: v / total for k, v in abs_map.items()}
+                
+            ranked = sorted(abs_map.items(), key=lambda x: x[1], reverse=True)[:5]
+            return dict(ranked)
+            
         except Exception as e:
             logger.error(f"[BiasDetection] Error computing feature importances: {e}")
             return {}

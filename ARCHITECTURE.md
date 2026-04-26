@@ -2,6 +2,87 @@
 
 ## Production-Grade Architecture Document
 
+## 2026-04 Refactor Snapshot
+
+The autonomous runtime now uses a single API contract and traceable pipeline execution:
+
+User Input
+-> Commander Agent
+-> Trust Agent (verification + risk)
+-> Retrieval Layer (FAISS + Mongo)
+-> Intelligence Layer
+-> XGBoost success predictor
+-> Logistic delay predictor
+-> Explainability layer
+-> Multi-agent debate
+-> Execution agent
+-> Reflection
+-> Memory persistence
+
+### New Runtime Modules
+
+- `core/autonomous_pipeline.py`:
+  - End-to-end orchestrator with per-stage trace envelopes.
+  - Returns JSON-safe output for UI rendering.
+- `services/unified_inference_engine.py`:
+  - Groq parsing + fallback behavior.
+  - Unified inference integration for XGBoost, Logistic, FAISS, and debate.
+- `services/model_service.py`:
+  - Loads and serves `catalyst_success_predictor.pkl` and `behavior_model.pkl`.
+- `services/retrieval_service.py`:
+  - FAISS + `all-MiniLM-L6-v2` semantic retrieval.
+- `routers/autonomous_router.py`:
+  - `POST /analyze_task`
+  - `POST /debate`
+  - `POST /feedback`
+  - `GET /model_status`
+  - `GET /task_history`
+  - `GET /execution_graph`
+  - `GET /explainability`
+  - `GET /similar_tasks`
+
+### Frontend Endpoint Usage Plan
+
+- Main dashboard: `POST /analyze_task`
+- Agent panel: `POST /debate`
+- Live system panel: `GET /model_status`
+- Learning loop controls: `POST /feedback`
+
+### Runtime Visibility Fields
+
+- `model_outputs.xgboost_probability`
+- `model_outputs.logistic_delay`
+- `fallback_used`
+- `system_confidence`
+- `priority_score`
+- `system_trace[]`
+
+### Training + Retrieval Scripts
+
+- `scripts/train_success_xgboost.py`
+- `scripts/train_delay_logistic.py`
+- `scripts/build_faiss_retrieval.py`
+
+### Standard API Output (locked)
+
+```json
+{
+  "task_id": "...",
+  "success_probability": 0.78,
+  "delay_risk": 0.65,
+  "risk_level": "HIGH",
+  "reasoning": "...",
+  "similar_tasks": [],
+  "debate": {},
+  "execution_plan": [],
+  "recommendations": [],
+  "trust_analysis": {},
+  "explainability": {},
+  "execution_graph": {},
+  "traces": []
+}
+```
+
 ---
 
 ## Executive Summary
@@ -302,6 +383,7 @@ AegisAI is a multi-agent autonomous decision system that:
   5. Log all commands and outputs to MongoDB
 
 - Example:
+
   ```python
   def execute_safe_command(cmd: str, timeout: int = 300) -> ExecutionResult:
     if not is_whitelisted(cmd):

@@ -33,11 +33,28 @@ export function MermaidDiagram({ chart, id = "mmd" }: Props) {
     const render = async () => {
       if (!ref.current) return;
       try {
-        const uid = `${id}-${Math.random().toString(36).slice(2, 8)}`;
-        const { svg } = await mermaid.render(uid, chart);
-        if (!cancelled && ref.current) ref.current.innerHTML = svg;
+        // Clear previous content
+        if (ref.current) ref.current.innerHTML = "";
+        
+        const uid = `mermaid-${id}-${Math.random().toString(36).slice(2, 6)}`;
+        // For Mermaid 10/11, passing the element as 3rd arg helps with dimension calculations
+        const { svg } = await mermaid.render(uid, chart, ref.current);
+        
+        if (!cancelled && ref.current) {
+          ref.current.innerHTML = svg;
+          const svgEl = ref.current.querySelector("svg");
+          if (svgEl) {
+            svgEl.style.width = "100%";
+            svgEl.style.height = "auto";
+          }
+        }
       } catch (e) {
-        if (ref.current) ref.current.innerHTML = `<pre class="text-xs text-destructive">${String(e)}</pre>`;
+        console.error("Mermaid render error:", e);
+        if (!cancelled && ref.current) {
+          ref.current.innerHTML = `<div class="text-[10px] text-muted-foreground p-4 border border-dashed border-border rounded-lg text-center">
+            Graph synthesis failed. Using fallback view.
+          </div>`;
+        }
       }
     };
     render();
