@@ -49,11 +49,17 @@ Return ONLY valid JSON:
   "risk_analyst": "<risk analyst's counter-argument>",
   "executor": "<executor's practical reality check>",
   "critic": "<critic's harsh review of assumptions>",
+  "reasoning": "<synthesized logical reasoning and core consensus>",
   "final_decision": "<final synthesized path forward>"
 }
 """.strip()
 
+        from utils.helpers import language_instruction
+        lang_note = language_instruction(language)
+        
         user_message = f"GOAL: {goal}\nPLAN: {plan}\nIDENTIFIED RISKS: {', '.join(risks)}"
+        if lang_note:
+            user_message += f"\n\n{lang_note}"
 
         try:
             debate = await self.groq.chat_json(
@@ -69,5 +75,6 @@ Return ONLY valid JSON:
                 "risk_analyst": "We must proceed with extreme caution and mitigate all risks.",
                 "executor": "We need clear milestones and resource allocation before starting.",
                 "critic": "The current plan assumes too much and lacks rigorous validation.",
+                "reasoning": "The debate concluded that while the goal is ambitious, safety guardrails and a phased approach are necessary to manage underlying risks.",
                 "final_decision": "Staged rollout recommended with heavy monitoring."
             }

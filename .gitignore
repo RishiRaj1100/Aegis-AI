@@ -48,6 +48,7 @@ htmlcov/
 # Logs
 *.log
 logs/
+backend_log.txt
 
 # OS
 .DS_Store
@@ -64,6 +65,12 @@ data/feedback_outcomes.csv
 frontend/.dist_backup/
 .DS_Store
 __pycache__/
+
+# Models and Training Data
+llama-fine_tuned/
+mistral_training_data.jsonl
+llama_training_data.jsonl
+aegis_training_dataset.csv
 
 # Internal handoff/progress docs (exclude from clean public repo)
 APP_INTEGRATION_STATUS.md

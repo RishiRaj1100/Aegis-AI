@@ -175,25 +175,14 @@ class GroqService:
             except RateLimitError as exc:
                 last_err = exc
                 err_str = str(exc)
-                # Daily token quota (TPD) does NOT recover in minutes — fail fast to fallback.
-                if "tokens per day" in err_str or "TPD" in err_str:
-                    logger.warning("Groq daily token quota exhausted. Triggering OpenRouter fallback.")
-                    return await self._openrouter_fallback(
-                        system_prompt=system_prompt,
-                        user_message=user_message,
-                        temperature=kwargs["temperature"],
-                        max_tokens=kwargs["max_tokens"],
-                        response_format=response_format
-                    )
-                # Per-minute / per-request rate limit — wait and retry.
-                match = re.search(r"(\d+)m([\d.]+)s", err_str)
-                wait = (int(match.group(1)) * 60 + float(match.group(2))) if match else 10.0 * (2 ** attempt)
-                wait = min(wait + 2, 65)  # cap at ~1 min
-                logger.warning(
-                    "Groq rate limit (attempt %d/3) — waiting %.0fs before retry",
-                    attempt + 1, wait,
+                logger.warning(f"Groq rate limit encountered: {err_str}. Triggering OpenRouter fallback.")
+                return await self._openrouter_fallback(
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    temperature=kwargs["temperature"],
+                    max_tokens=kwargs["max_tokens"],
+                    response_format=response_format
                 )
-                await asyncio.sleep(wait)
             except Exception as exc:
                 logger.error("Unexpected Groq error: %s. Triggering OpenRouter fallback.", exc)
                 return await self._openrouter_fallback(
@@ -241,8 +230,26 @@ class GroqService:
         try:
             return json.loads(raw)
         except json.JSONDecodeError as exc:
-            logger.error("Failed to parse JSON response: %s | raw=%s", exc, raw[:200])
-            return {}
+            # Attempt a simple repair for truncated JSON
+            logger.warning("JSON parse failed, attempting repair... | error: %s", exc)
+            repaired = raw.strip()
+            
+            # If it looks like it was truncated in the middle of a string
+            if repaired.count('"') % 2 != 0:
+                repaired += '"'
+            
+            # Close any open structures
+            open_braces = repaired.count('{') - repaired.count('}')
+            open_brackets = repaired.count('[') - repaired.count(']')
+            
+            repaired += ']' * max(0, open_brackets)
+            repaired += '}' * max(0, open_braces)
+            
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                logger.error("Failed to parse JSON response even after repair: %s | raw=%s", exc, raw[:200])
+                return {}
 
     # ── Multi-turn helper ─────────────────────────────────────────────────────
 

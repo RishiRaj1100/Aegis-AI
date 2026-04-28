@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+__pycache__
+node_modules
+dist
+.pytest_cache
+llama-fine_tuned
+Aegis_fine_tuned
+llama_training_data.jsonl
+aegis_training_dataset.csv
+*.zip
+*.log

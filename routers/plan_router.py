@@ -31,6 +31,41 @@ def _get_sarvam():
     return get_sarvam_service()
 
 
+# ── GET /plan/list ─────────────────────────────────────────────────────────────
+
+@router.get(
+    "/list",
+    status_code=status.HTTP_200_OK,
+    summary="List all stored plans",
+    description="Returns a paginated list of all task plans stored in MongoDB.",
+)
+async def list_plans(
+    limit: int = Query(default=20, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    pipeline=Depends(_get_pipeline),
+) -> Dict[str, Any]:
+    user_id = require_current_user_id(current_user)
+    tasks = await pipeline.memory.mongo.list_tasks(limit=limit, skip=skip, status=status_filter, user_id=user_id)
+    return {
+        "total_returned": len(tasks),
+        "limit": limit,
+        "skip": skip,
+        "tasks": [
+            {
+                "task_id": t.get("task_id"),
+                "goal": t.get("goal", "")[:120],
+                "confidence": t.get("confidence"),
+                "risk_level": t.get("risk_level"),
+                "status": t.get("status"),
+                "created_at": t.get("created_at"),
+            }
+            for t in tasks
+        ],
+    }
+
+
 # ── GET /plan  (alias for list) ────────────────────────────────────────────────
 
 @router.get(
@@ -99,6 +134,9 @@ async def get_plan(
         "reasoning": task_doc.get("reasoning", ""),
         "status": task_doc.get("status", "PENDING"),
         "language": task_doc.get("language", "en-IN"),
+        "explainability": task_doc.get("explainability", {}),
+        "reflection": task_doc.get("reflection_data", {}),
+        "debate_results": task_doc.get("debate_results", {}),
         "created_at": task_doc.get("created_at", ""),
         "updated_at": task_doc.get("updated_at", ""),
     }
@@ -189,36 +227,3 @@ async def translate_plan(
     }
 
 
-# ── GET /plan/list ─────────────────────────────────────────────────────────────
-
-@router.get(
-    "/list",
-    status_code=status.HTTP_200_OK,
-    summary="List all stored plans",
-    description="Returns a paginated list of all task plans stored in MongoDB.",
-)
-async def list_plans(
-    limit: int = Query(default=20, ge=1, le=100),
-    skip: int = Query(default=0, ge=0),
-    status_filter: Optional[str] = Query(default=None, alias="status"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    pipeline=Depends(_get_pipeline),
-) -> Dict[str, Any]:
-    user_id = require_current_user_id(current_user)
-    tasks = await pipeline.memory.mongo.list_tasks(limit=limit, skip=skip, status=status_filter, user_id=user_id)
-    return {
-        "total_returned": len(tasks),
-        "limit": limit,
-        "skip": skip,
-        "tasks": [
-            {
-                "task_id": t.get("task_id"),
-                "goal": t.get("goal", "")[:120],
-                "confidence": t.get("confidence"),
-                "risk_level": t.get("risk_level"),
-                "status": t.get("status"),
-                "created_at": t.get("created_at"),
-            }
-            for t in tasks
-        ],
-    }

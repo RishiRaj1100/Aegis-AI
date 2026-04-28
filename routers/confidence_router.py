@@ -69,6 +69,42 @@ def _normalise_trust_components(raw: Dict[str, Any]) -> TrustComponents:
     )
 
 
+# ── GET /confidence/stats ──────────────────────────────────────────────────────
+
+@router.get(
+    "/stats/summary",
+    status_code=status.HTTP_200_OK,
+    summary="Aggregate confidence statistics",
+    description="Returns system-wide confidence statistics across all stored tasks.",
+)
+async def confidence_stats(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    pipeline=Depends(_get_pipeline),
+) -> Dict[str, Any]:
+    user_id = require_current_user_id(current_user)
+    tasks = await pipeline.memory.mongo.list_tasks(limit=200, user_id=user_id)
+    if not tasks:
+        return {"message": "No tasks found.", "total_tasks": 0}
+
+    confidences = [float(t.get("confidence", 0)) for t in tasks]
+    risk_counts: Dict[str, int] = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
+    for t in tasks:
+        rl = t.get("risk_level", "MEDIUM")
+        risk_counts[rl] = risk_counts.get(rl, 0) + 1
+
+    avg_conf = sum(confidences) / len(confidences)
+    past_success_rate = await pipeline.memory.get_past_success_rate()
+
+    return {
+        "total_tasks": len(tasks),
+        "average_confidence": round(avg_conf, 2),
+        "max_confidence": round(max(confidences), 2),
+        "min_confidence": round(min(confidences), 2),
+        "past_success_rate_pct": round(past_success_rate * 100, 1),
+        "risk_distribution": risk_counts,
+    }
+
+
 # ── GET /confidence/{task_id} ──────────────────────────────────────────────────
 
 @router.get(
@@ -171,40 +207,6 @@ async def get_confidence_components(
     }
 
 
-# ── GET /confidence/stats ──────────────────────────────────────────────────────
-
-@router.get(
-    "/stats/summary",
-    status_code=status.HTTP_200_OK,
-    summary="Aggregate confidence statistics",
-    description="Returns system-wide confidence statistics across all stored tasks.",
-)
-async def confidence_stats(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    pipeline=Depends(_get_pipeline),
-) -> Dict[str, Any]:
-    user_id = require_current_user_id(current_user)
-    tasks = await pipeline.memory.mongo.list_tasks(limit=200, user_id=user_id)
-    if not tasks:
-        return {"message": "No tasks found.", "total_tasks": 0}
-
-    confidences = [float(t.get("confidence", 0)) for t in tasks]
-    risk_counts: Dict[str, int] = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
-    for t in tasks:
-        rl = t.get("risk_level", "MEDIUM")
-        risk_counts[rl] = risk_counts.get(rl, 0) + 1
-
-    avg_conf = sum(confidences) / len(confidences)
-    past_success_rate = await pipeline.memory.get_past_success_rate()
-
-    return {
-        "total_tasks": len(tasks),
-        "average_confidence": round(avg_conf, 2),
-        "max_confidence": round(max(confidences), 2),
-        "min_confidence": round(min(confidences), 2),
-        "past_success_rate_pct": round(past_success_rate * 100, 1),
-        "risk_distribution": risk_counts,
-    }
 
 
 # ── POST /confidence/{task_id}/refresh ────────────────────────────────────────

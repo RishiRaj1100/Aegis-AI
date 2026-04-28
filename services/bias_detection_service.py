@@ -354,13 +354,16 @@ class BiasDetectionService:
                 
             model = joblib.load(model_path)
             
-            # Baseline feature set to evaluate SHAP
+            # Baseline feature set to evaluate SHAP (matching Catalyst success predictor schema)
             features = pd.DataFrame([{
-                "goal_length_words": 20, "num_subtasks": 5, "clarity": 0.6,
-                "info_quality": 0.6, "feasibility": 0.6, "manageability": 0.6,
-                "resource_adequacy": 0.6, "uncertainty": 0.4, "past_success_rate": 0.6,
-                "similarity_score": 0.5, "case_signal": 0.5, "context_signal": 0.5,
-                "trust_signal": 0.6, "reflection_signal": 0.5,
+                "deadline_days": 7.0,
+                "complexity": 0.5,
+                "resources": 1.0,
+                "dependencies": 2.0,
+                "priority": 3.0,
+                "task_length": 15.0,
+                "deadline_urgency": 0.5,
+                "resource_efficiency": 1.0,
             }])
             
             if hasattr(model, "feature_names_in_"):

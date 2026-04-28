@@ -28,15 +28,19 @@ class MongoDBService:
     def __init__(self) -> None:
         self._client: Optional[AsyncIOMotorClient] = None
         self._db: Optional[AsyncIOMotorDatabase] = None
+        self._is_connected: bool = False
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def connect(self) -> None:
         logger.info("Connecting to MongoDB at %s …", settings.MONGODB_URI)
-        self._client = AsyncIOMotorClient(settings.MONGODB_URI)
+        self._client = AsyncIOMotorClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
         self._db = self._client[settings.MONGODB_DB_NAME]
+        # Verify connection
+        await self._client.admin.command('ping')
         # Ensure indexes
         await self._ensure_indexes()
+        self._is_connected = True
         logger.info("MongoDB connected → db=%s", settings.MONGODB_DB_NAME)
 
     async def close(self) -> None:
@@ -66,9 +70,12 @@ class MongoDBService:
 
     @property
     def db(self) -> AsyncIOMotorDatabase:
-        if self._db is None:
-            raise RuntimeError("MongoDB not connected. Call connect() first.")
+        if not self._is_connected or self._db is None:
+            raise RuntimeError("MongoDB not connected or unavailable.")
         return self._db
+
+    def is_healthy(self) -> bool:
+        return self._is_connected
 
     def _tasks(self):
         return self.db[settings.MONGODB_TASKS_COLLECTION]
@@ -86,12 +93,17 @@ class MongoDBService:
 
     async def insert_task(self, task_doc: Dict[str, Any]) -> str:
         """Insert a new task document. Returns the task_id."""
+        if not self._is_connected:
+            logger.warning("Mocking task insertion for %s (DB Offline)", task_doc.get("task_id"))
+            return task_doc["task_id"]
         result = await self._tasks().insert_one(task_doc)
         logger.debug("Inserted task %s (_id=%s)", task_doc.get("task_id"), result.inserted_id)
         return task_doc["task_id"]
 
     async def get_task(self, task_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Retrieve a task document by task_id."""
+        if not self._is_connected:
+            return None
         query: Dict[str, Any] = {"task_id": task_id}
         if user_id:
             query["user_id"] = user_id
@@ -118,6 +130,8 @@ class MongoDBService:
         user_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Return a paginated list of task documents."""
+        if not self._is_connected:
+            return []
         query: Dict[str, Any] = {}
         if status:
             query["status"] = status
@@ -204,10 +218,13 @@ class MongoDBService:
         completed = sum(1 for d in docs if d["status"] == "COMPLETED")
         return completed / len(docs)
 
-    async def get_recent_tasks(self, limit: int = 20) -> List[Dict[str, Any]]:
+    async def get_recent_tasks(self, limit: int = 20, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        query: Dict[str, Any] = {}
+        if user_id:
+            query["user_id"] = user_id
         cursor = (
             self._tasks()
-            .find({}, {"_id": 0})
+            .find(query, {"_id": 0})
             .sort("created_at", DESCENDING)
             .limit(limit)
         )

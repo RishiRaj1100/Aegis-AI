@@ -57,26 +57,30 @@ class MemoryAgent:
         logger.info("MemoryAgent: task %s created and cached.", task_id)
         return task_id
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> bool:
+    async def update_task(self, task_id: str, updates: Dict[str, Any], user_id: Optional[str] = None) -> bool:
         """Update MongoDB document and invalidate / refresh Redis context."""
-        success = await self.mongo.update_task(task_id, updates)
+        success = await self.mongo.update_task(task_id, updates, user_id=user_id)
         if success:
             await self.redis.update_task_context(task_id, updates)
             logger.debug("MemoryAgent: task %s updated.", task_id)
         return success
 
-    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task(self, task_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Read task — Redis-first (fast path), fall back to MongoDB.
         Re-populates Redis on a cache miss.
         """
         cached = await self.redis.get_task_context(task_id)
         if cached and cached.get("execution_plan"):
-            # Full document found in cache
-            return cached
+            # If user_id is provided, verify it
+            if user_id and cached.get("user_id") != user_id:
+                logger.warning("MemoryAgent: user_id mismatch for cached task %s", task_id)
+                # Fall through to Mongo to be sure
+            else:
+                return cached
 
         # Cache miss or partial hit → read from Mongo
-        doc = await self.mongo.get_task(task_id)
+        doc = await self.mongo.get_task(task_id, user_id=user_id)
         if doc:
             await self.redis.cache_task_context(task_id, doc)
         return doc
@@ -87,6 +91,7 @@ class MemoryAgent:
         status: TaskStatus,
         outcome_notes: Optional[str] = None,
         actual_duration_minutes: Optional[int] = None,
+        user_id: Optional[str] = None,
     ) -> bool:
         """Persist task outcome and evict Redis context."""
         success = await self.mongo.record_outcome(
@@ -94,6 +99,7 @@ class MemoryAgent:
             status=status.value,
             outcome_notes=outcome_notes,
             actual_duration_minutes=actual_duration_minutes,
+            user_id=user_id,
         )
         if success:
             await self.redis.cache_confidence(task_id, {"status": status.value})
@@ -120,8 +126,8 @@ class MemoryAgent:
         logger.debug("Past success rate (last %d tasks): %.3f", limit, rate)
         return rate
 
-    async def get_recent_tasks(self, limit: int = 20) -> List[Dict[str, Any]]:
-        return await self.mongo.get_recent_tasks(limit)
+    async def get_recent_tasks(self, limit: int = 20, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return await self.mongo.get_recent_tasks(limit, user_id=user_id)
 
     # ══════════════════════════════════════════════════════════════════════════
     # Reflection documents

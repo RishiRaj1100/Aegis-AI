@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from services.user_service import UserService
 from utils.helpers import utcnow
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 class RegisterRequest(BaseModel):
     """POST /auth/register request body."""
     name: str = Field(..., min_length=2, max_length=100, description="Full name")
-    email: EmailStr = Field(..., description="Email address (must be unique)")
+    email: str = Field(..., description="Email address (must be unique)")
     password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 chars)")
 
     model_config = ConfigDict(
@@ -46,7 +46,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     """POST /auth/login request body."""
-    email: EmailStr
+    email: str
     password: str
 
 

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AegisResponse, TaskHistory } from '@/types/aegis';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.port === '8000' ? '' : 'http://127.0.0.1:8000');
 
 // ── Submit a new goal ────────────────────────────────────────────────────────
 export function useSubmitGoal() {
@@ -35,7 +35,7 @@ export function useTaskHistory() {
   return useQuery<TaskHistory[]>({
     queryKey: ['taskHistory'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/tasks/history?limit=20`);
+      const res = await fetch(`${API_BASE}/plan/list?limit=20`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.tasks || data || [];
@@ -63,11 +63,33 @@ export function useTaskById(taskId: string | null) {
   return useQuery<AegisResponse>({
     queryKey: ['task', taskId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/tasks/${taskId}`);
+      const res = await fetch(`${API_BASE}/plan/${taskId}`);
       if (!res.ok) throw new Error('Task not found');
       return res.json();
     },
     enabled: !!taskId,
     retry: false,
+  });
+}
+
+// ── Follow-up (Cross-question) ───────────────────────────────────────────────
+export function useFollowUp() {
+  return useMutation<any, Error, { taskId: string; message: string; language: string }>({
+    mutationFn: async ({ taskId, message, language }) => {
+      const res = await fetch(`${API_BASE}/intelligence/followup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_id: taskId,
+          message,
+          language,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Follow-up failed' }));
+        throw new Error(err.detail || 'Failed to process follow-up');
+      }
+      return res.json();
+    },
   });
 }

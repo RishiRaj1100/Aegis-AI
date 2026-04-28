@@ -35,7 +35,7 @@ export default function SimilarTasksPanel({ data }: SimilarTasksPanelProps) {
               transition={{ delay: i * 0.06 }}
               whileHover={{ x: 2 }}
             >
-              {task.success
+              {task.status === 'COMPLETED'
                 ? <CheckCircle size={14} style={{ color: '#10B981', flexShrink: 0 }} />
                 : <XCircle size={14} style={{ color: '#F43F5E', flexShrink: 0 }} />}
 
@@ -43,14 +43,14 @@ export default function SimilarTasksPanel({ data }: SimilarTasksPanelProps) {
                 <p className="text-xs font-medium truncate" style={{ color: '#0F0A2E' }}>{task.goal}</p>
                 {task.confidence !== undefined && (
                   <p className="text-xs mt-0.5" style={{ color: '#9CA3AF', fontFamily: 'JetBrains Mono' }}>
-                    Confidence: {task.confidence}%
+                    Similarity: {Math.round((task.similarity || 0) * 100)}%
                   </p>
                 )}
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`badge ${task.success ? 'badge-success' : 'badge-danger'}`}>
-                  {task.success ? 'SUCCESS' : 'FAILED'}
+                <span className={`badge ${task.status === 'COMPLETED' ? 'badge-success' : 'badge-danger'}`}>
+                  {task.status}
                 </span>
                 <ChevronRight size={12} style={{ color: '#D1D5DB' }} />
               </div>

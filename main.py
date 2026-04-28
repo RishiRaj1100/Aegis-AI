@@ -68,9 +68,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     mongo = get_mongodb_service()
     redis = get_redis_service()
 
-    await mongo.connect()
-    await redis.connect()
-    await initialize_pinecone()
+    try:
+        await mongo.connect()
+    except Exception as exc:
+        logger.error("MongoDB connection failed (Limited functionality mode): %s", exc)
+
+    try:
+        await redis.connect()
+    except Exception as exc:
+        logger.error("Redis connection failed: %s", exc)
+
+    try:
+        await initialize_pinecone()
+    except Exception as exc:
+        logger.error("Pinecone connection failed: %s", exc)
 
     # ── Initialise service singletons ─────────────────────────────────────────
     groq = get_groq_service()
@@ -162,26 +173,26 @@ app = FastAPI(
 # ── CORS Configuration ────────────────────────────────────────────────────────
 
 cors_origins = [
-    "http://localhost:3000",
-    "http://localhost:8000",
     "http://localhost:8080",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:3000",
+    "http://localhost:3000",
     "http://127.0.0.1:8080",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 if settings.FRONTEND_URL:
     cors_origins.extend(
         [origin.strip() for origin in settings.FRONTEND_URL.split(",") if origin.strip()]
     )
 
-# (CORS middleware itself is applied at the bottom to ensure it wraps all errors)
+# (CORS middleware itself is applied at the end of this file to ensure it wraps all agents)
 
 
 # Removed legacy block
 
 # ── Request timing middleware ─────────────────────────────────────────────────
 
-_PIPELINE_TIMEOUT_SECONDS = 300  # 5 minute ceiling: fallback providers (OpenRouter) can be slow sequential calls
+_PIPELINE_TIMEOUT_SECONDS = 600  # 10 minute ceiling: fallback providers (OpenRouter) can be slow sequential calls
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):

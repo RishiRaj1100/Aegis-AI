@@ -6,14 +6,13 @@ Set-Location $ProjectRoot
 
 Write-Host "Starting AegisAI Full Stack..." -ForegroundColor Cyan
 
-# 1. Start Redis
-$RedisExe = "C:\Users\HP\redis\redis-server.exe"
-if (Test-Path $RedisExe) {
-    Write-Host "[1/3] Starting Redis..." -ForegroundColor Green
-    Start-Process -FilePath $RedisExe -ArgumentList "--port 6379" -WindowStyle Minimized
-} else {
-    Write-Host "[WARN] Redis not found at $RedisExe. Skipping..." -ForegroundColor Yellow
-}
+# 1. Start Dependencies (MongoDB & Redis) via Docker Compose
+Write-Host "[1/3] Starting Dependencies (MongoDB & Redis)..." -ForegroundColor Green
+docker-compose up -d
+
+# Wait for MongoDB to be ready (brief pause)
+Write-Host "Waiting for services to initialize..." -ForegroundColor Gray
+Start-Sleep -Seconds 5
 
 # 2. Start Backend (FastAPI)
 Write-Host "[2/3] Starting Backend (FastAPI)..." -ForegroundColor Green

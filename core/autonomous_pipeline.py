@@ -203,8 +203,14 @@ class AutonomousDecisionPipeline:
 
         explainer = get_explainability_service()
         features_df = pd.DataFrame([inference.get("features", {})])
+        
+        # Ensure we pass the actual model object, not a bundle dict
+        success_model = self.engine.models.success_model
+        if isinstance(success_model, dict) and "model" in success_model:
+            success_model = success_model["model"]
+
         shap_map, shap_positive, shap_negative = explainer.explain_prediction(
-            model=self.engine.models.success_model,
+            model=success_model,
             features=features_df
         )
 

@@ -375,8 +375,7 @@ def get_pinecone_service() -> PineconeService:
     global _pinecone_instance
 
     if _pinecone_instance is None:
-        api_key = os.getenv("PINECONE_API_KEY")
-        _pinecone_instance = PineconeService(api_key=api_key)
+        _pinecone_instance = PineconeService(api_key=settings.PINECONE_API_KEY)
 
     return _pinecone_instance
 

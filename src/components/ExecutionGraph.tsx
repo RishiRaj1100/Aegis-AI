@@ -80,11 +80,14 @@ export default function ExecutionGraph({ data }: ExecutionGraphProps) {
           },
         });
 
-        const def = buildMermaidDef(subtasks);
-        const id = `execution-graph-${Date.now()}`;
+        // Prefer the backend's precise mermaid definition if available
+        const def = data.execution_graph?.mermaid || buildMermaidDef(subtasks);
+        const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
         
-        // Pass container for dimension calculation
-        const { svg } = await mermaid.render(id, def, containerRef.current);
+        if (!containerRef.current) return;
+
+        // Render to SVG
+        const { svg } = await mermaid.render(id, def);
         
         if (containerRef.current) {
           containerRef.current.innerHTML = svg;
@@ -123,15 +126,15 @@ export default function ExecutionGraph({ data }: ExecutionGraphProps) {
       </div>
 
       {subtasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 gap-2">
+        <div className="flex flex-col items-center justify-center h-[400px] gap-2">
           <GitBranch size={32} style={{ color: 'rgba(124,58,237,0.2)' }} />
           <p className="text-sm" style={{ color: '#9CA3AF' }}>Submit a goal to generate the workflow graph.</p>
         </div>
       ) : (
         <div
           ref={containerRef}
-          className="w-full overflow-x-auto rounded-xl p-2"
-          style={{ background: 'rgba(255,255,255,0.5)', minHeight: '200px' }}
+          className="w-full overflow-auto rounded-xl p-2 flex items-center justify-center"
+          style={{ background: 'rgba(255,255,255,0.5)', height: '500px' }}
         />
       )}
     </motion.div>

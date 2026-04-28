@@ -64,6 +64,10 @@ class RetrievalService:
             item["success"] = bool(item.get("success", True))
             item["confidence"] = round(float(item.get("confidence", score * 100)), 1)
             item["similarity"] = float(max(0.0, min(1.0, score)))
+            # Include extra metadata for the UI
+            item["execution_plan"] = item.get("execution_plan", "")
+            item["resources"] = item.get("resources", []) or item.get("recommended_resources", [])
+            item["insights"] = item.get("insights", "") or item.get("research_insights", "")
             results.append(item)
         return results
 

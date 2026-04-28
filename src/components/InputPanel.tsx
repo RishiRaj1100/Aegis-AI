@@ -6,6 +6,7 @@ import { useVoice } from '@/hooks/useVoice';
 interface InputPanelProps {
   onSubmit: (goal: string, language: string) => void;
   isLoading: boolean;
+  isOnline?: boolean;
 }
 
 const LANGUAGES = [
@@ -15,11 +16,11 @@ const LANGUAGES = [
   { code: 'te-IN', label: 'తెలుగు' },
 ];
 
-export default function InputPanel({ onSubmit, isLoading }: InputPanelProps) {
+export default function InputPanel({ onSubmit, isLoading, isOnline }: InputPanelProps) {
   const [goal, setGoal] = useState('');
   const [language, setLanguage] = useState('en-IN');
 
-  const { isListening, startListening, stopListening } = useVoice((text) => {
+  const { isListening, startListening, stopListening, interimTranscript } = useVoice((text) => {
     setGoal((prev) => prev ? `${prev} ${text}` : text);
   });
 
@@ -54,8 +55,10 @@ export default function InputPanel({ onSubmit, isLoading }: InputPanelProps) {
         </div>
         {/* System status dot */}
         <div className="ml-auto flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 pulse-ring" />
-          <span className="text-xs font-medium" style={{ color: '#059669' }}>ONLINE</span>
+          <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-rose-400'} pulse-ring`} />
+          <span className="text-xs font-medium" style={{ color: isOnline ? '#059669' : '#E11D48' }}>
+            {isOnline ? 'ONLINE' : 'OFFLINE'}
+          </span>
         </div>
       </div>
 
@@ -64,7 +67,7 @@ export default function InputPanel({ onSubmit, isLoading }: InputPanelProps) {
         <div className="relative">
           <textarea
             id="goal-input"
-            value={goal}
+            value={isListening ? (goal + (interimTranscript ? ' ' + interimTranscript : '')) : goal}
             onChange={(e) => setGoal(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSubmit(e); }}
             placeholder="e.g. Build a customer churn prediction model and deploy it with an explainable dashboard..."

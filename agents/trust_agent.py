@@ -52,14 +52,18 @@ Evaluate these six dimensions (0.0 to 1.0):
 5. resource_adequacy: Sufficiency of time and resources.
 6. external_uncertainty: Stability of the environment.
 
-Identify the core assumptions (claims) and potential failure scenarios.
+CRITICAL RULES:
+- GROUNDING: Base all scores strictly on the provided research insights and context. Do NOT assume resources exist if they are not mentioned.
+- HALLUCINATION: Do not invent risks or failure scenarios that are not logically derived from the inputs.
+- REASONING: For each claim and scenario, ensure there is a clear logical link to the research data.
+- NO GENERIC DATA: Avoid vague claims like "The plan is good". Be specific about what exactly is trusted or risky.
 
 Return a valid JSON object matching this schema — nothing else:
 {{
-  "claims": ["<extracted claim 1>", "<extracted claim 2>"],
-  "confidence_score": <0.0 to 1.0>,
+  "claims": ["<extracted claim 1 (specific and grounded)>", "<extracted claim 2>"],
+  "confidence_score": <0.0 to 1.0 (carefully calibrated)>,
   "delay_risk": <0.0 to 1.0 (estimated probability of missing deadlines)>,
-  "failure_scenarios": ["<scenario 1>", "<scenario 2>"],
+  "failure_scenarios": ["<specific scenario 1>", "<specific scenario 2>"],
   "dimensions": {{
     "goal_clarity": <score>,
     "information_quality": <score>,
@@ -196,7 +200,7 @@ class TrustAgent:
         elif confidence_score < 0.3:
             blocking_reason = f"Insufficient confidence ({confidence_score:.2f}). Human review required."
 
-        is_verified = blocking_reason is None and risk_score <= 0.65 and confidence_score >= 0.45
+        is_verified = blocking_reason is None and risk_score <= 0.72 and confidence_score >= 0.38
         result = VerificationResult(
             claim=claim,
             is_verified=is_verified,
@@ -349,7 +353,7 @@ class TrustAgent:
     ) -> float:
         if not evidence and not similar_cases:
             # Baseline confidence for valid-sounding goals when no history exists
-            return max(0.4, 0.72 - risk_score)
+            return max(0.45, 0.82 - risk_score)
 
         avg_similarity = sum(float(case.get("similarity", 0.0)) for case in similar_cases) / len(similar_cases) if similar_cases else 0.0
         evidence_strength = min(1.0, 0.2 + (len(evidence) * 0.08) + (avg_similarity * 0.45))

@@ -266,8 +266,9 @@ class GoalResponse(BaseModel):
     risk_level: Optional[RiskLevel] = None
     explainability: Dict[str, Any] = Field(default_factory=dict)
     trust_dimensions: Dict[str, Any] = Field(default_factory=dict)
-    similar_tasks: List[Dict[str, Any]] = Field(default_factory=list)
+    similar_tasks: List[SimilarTaskResponse] = Field(default_factory=list)
     reflection: Optional[Dict[str, Any]] = None
+    execution_graph: Optional[ExecutionGraphResponse] = None
     processing_time_ms: Optional[float] = None
     reasoning_provider: str = "Groq/Mistral-7B"
     system_trace: List[str] = Field(default_factory=list)
@@ -414,6 +415,9 @@ class SimilarTaskResponse(BaseModel):
     risk_level: str
     similarity: float
     status: str
+    execution_plan: Optional[str] = None
+    resources: Optional[List[str]] = Field(default_factory=list)
+    insights: Optional[str] = None
 
 
 class StrategyProfileResponse(BaseModel):

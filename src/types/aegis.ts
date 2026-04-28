@@ -29,11 +29,15 @@ export interface ShapFactor {
 }
 
 export interface SimilarTask {
-  id: string;
+  task_id: string;
   goal: string;
-  success: boolean;
-  confidence?: number;
-  completed_at?: string;
+  confidence: number;
+  risk_level: string;
+  similarity: number;
+  status: string;
+  execution_plan?: string;
+  resources?: string[];
+  insights?: string;
 }
 
 export interface TrustDimension {
@@ -74,7 +78,12 @@ export interface AegisResponse {
   };
   subtasks?: Subtask[];
   debate_results?: DebateResult;
-  explainability?: Record<string, number>;
+  explainability?: {
+    positive_factors?: string[];
+    negative_factors?: string[];
+    shap_values?: Record<string, number>;
+    warning?: string;
+  };
   trust_dimensions?: TrustDimension;
   similar_tasks?: SimilarTask[];
   reflection?: {
@@ -83,10 +92,25 @@ export interface AegisResponse {
     improvement_delta?: number;
     insights?: string[];
   };
+  execution_graph?: {
+    task_id: string;
+    goal: string;
+    nodes: Array<{ id: string; label: string; type: string; status: string }>;
+    edges: Array<{ source: string; target: string; label: string }>;
+    mermaid: string;
+  };
   model_outputs?: Record<string, unknown>;
   system_confidence?: number;
   fallback_used?: boolean;
   system_trace?: string[];
+  audio_response_base64?: string;
+}
+
+export interface FollowUpResponse {
+  task_id: string;
+  reply: string;
+  audio_base64?: string;
+  language?: string;
 }
 
 export interface TaskHistory {

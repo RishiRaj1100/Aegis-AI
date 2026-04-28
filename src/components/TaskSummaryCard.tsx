@@ -4,6 +4,7 @@ import type { AegisResponse } from '@/types/aegis';
 
 interface TaskSummaryCardProps {
   data: AegisResponse;
+  onAskClick?: () => void;
 }
 
 function RingGauge({ value, color, size = 80 }: { value: number; color: string; size?: number }) {
@@ -27,7 +28,7 @@ function RingGauge({ value, color, size = 80 }: { value: number; color: string; 
   );
 }
 
-export default function TaskSummaryCard({ data }: TaskSummaryCardProps) {
+export default function TaskSummaryCard({ data, onAskClick }: TaskSummaryCardProps) {
   const plan = data.plan || data;
   const confidence = Math.round(data.confidence ?? plan.confidence ?? 0);
   const riskLevel = data.risk_level || plan.risk_level || 'MEDIUM';
@@ -170,13 +171,21 @@ export default function TaskSummaryCard({ data }: TaskSummaryCardProps) {
         </div>
       )}
 
-      {/* Provider badge */}
-      <div className="mt-3 flex items-center gap-2">
-        <TrendingUp size={12} style={{ color: '#10B981' }} />
-        <span className="text-xs" style={{ color: '#6B7280' }}>
-          Processed by <strong style={{ color: '#7C3AED' }}>{provider}</strong>
-          {data.fallback_used ? ' (fallback active)' : ''}
-        </span>
+      {/* Action Area */}
+      <div className="mt-6 flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-1">
+          <TrendingUp size={12} style={{ color: '#10B981' }} />
+          <span className="text-xs" style={{ color: '#6B7280' }}>
+            Processed by <strong style={{ color: '#7C3AED' }}>{provider}</strong>
+          </span>
+        </div>
+        
+        <button 
+          onClick={() => onAskClick?.()}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 text-[10px] font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
+        >
+          Ask AegisAI
+        </button>
       </div>
     </motion.div>
   );

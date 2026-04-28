@@ -58,11 +58,15 @@ class UnifiedInferenceEngine:
                 "priority": float(context.get("priority", 0.5)),
             }
 
-    async def reason(self, task: str, success_probability: float, delay_risk: float, similar_tasks: List[Dict[str, Any]]) -> Dict[str, str]:
+    async def reason(self, task: str, success_probability: float, delay_risk: float, similar_tasks: List[Dict[str, Any]], language: str = "en-IN") -> Dict[str, str]:
+        from utils.helpers import language_instruction
+        lang_note = language_instruction(language)
+
         async def _call():
             response = await self.reasoning_service.chat_with_fallback(
                 system_prompt=(
                     "You are an AI decision architect. Return concise execution reasoning."
+                    + (f"\n\n{lang_note}" if lang_note else "")
                 ),
                 user_message=(
                     f"Task: {task}\nSuccess Probability: {success_probability:.2f}\n"
@@ -84,7 +88,7 @@ class UnifiedInferenceEngine:
                 "provider": "local-fallback",
             }
 
-    async def infer(self, task: str, context: Dict[str, Any], intelligence: Optional[Any] = None) -> Dict[str, Any]:
+    async def infer(self, task: str, context: Dict[str, Any], intelligence: Optional[Any] = None, language: str = "en-IN") -> Dict[str, Any]:
         parsed = await self.parse_task(task, context)
         
         def _to_float(val: Any, default: float) -> float:
@@ -110,12 +114,12 @@ class UnifiedInferenceEngine:
         resource_efficiency = resources / max(complexity + 0.1, 0.1)
 
         features = {
-            "task_length": task_length,
             "deadline_days": deadline_days,
             "complexity": complexity,
             "resources": resources,
             "dependencies": dependencies,
             "priority": priority,
+            "task_length": task_length,
             "deadline_urgency": deadline_urgency,
             "resource_efficiency": resource_efficiency,
         }
@@ -154,7 +158,7 @@ class UnifiedInferenceEngine:
             except Exception as exc:
                 logger.warning("Similarity fallback failed: %s", exc)
 
-        reasoning = await self.reason(task, success_probability, delay_risk, similar)
+        reasoning = await self.reason(task, success_probability, delay_risk, similar, language=language)
 
         # Calculate disagreement if possible
         model_disagreement = abs(success_probability - (1.0 - delay_risk))

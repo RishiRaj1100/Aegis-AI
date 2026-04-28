@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Activity, Wifi, WifiOff } from 'lucide-react';
+import { RotateCcw, Brain, Activity, Wifi, WifiOff, HelpCircle, MessageSquare, ChevronRight, Volume2, Send, Loader2, Info } from 'lucide-react';
 
 import InputPanel from '@/components/InputPanel';
 import TaskSummaryCard from '@/components/TaskSummaryCard';
@@ -12,35 +12,38 @@ import ExecutionGraph from '@/components/ExecutionGraph';
 import ReflectionPanel from '@/components/ReflectionPanel';
 import TrustRiskPanel from '@/components/TrustRiskPanel';
 import TaskHistoryPanel from '@/components/TaskHistoryPanel';
-import CrossQuestionModal from '@/components/CrossQuestionModal';
-
-import { useSubmitGoal, useTaskHistory, useHealth, useTaskById } from '@/hooks/useAegisAPI';
+import { useSubmitGoal, useTaskHistory, useHealth, useTaskById, useFollowUp } from '@/hooks/useAegisAPI';
 import type { AegisResponse } from '@/types/aegis';
+import AudioPlayback from '@/components/AudioPlayback';
 
-// Pipeline stage labels
 const PIPELINE_STAGES = [
   'Commander', 'Trust', 'Retrieval', 'ML', 'Explainability', 'Debate', 'Execution', 'Reflection', 'Memory',
 ];
 
 export default function Dashboard() {
   const [result, setResult] = useState<AegisResponse | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState('en-IN');
   const [reloadId, setReloadId] = useState<string | null>(null);
-  const [whyOpen, setWhyOpen] = useState(false);
   const [activeStage, setActiveStage] = useState<number>(-1);
+  const [activeTab, setActiveTab] = useState<'analysis' | 'graph' | 'debate' | 'qa' | 'reflection'>('analysis');
 
   const { mutate: submitGoal, isPending } = useSubmitGoal();
   const { data: history = [], isLoading: historyLoading } = useTaskHistory();
   const { data: health } = useHealth();
   const { data: reloadedTask } = useTaskById(reloadId);
 
-  // When a task is reloaded from history
   const effectiveResult = reloadId && reloadedTask ? reloadedTask : result;
 
+  useEffect(() => {
+    if (effectiveResult?.plan?.language) {
+      setSelectedLanguage(effectiveResult.plan.language);
+    }
+  }, [effectiveResult]);
+
   const handleSubmit = useCallback((goal: string, language: string) => {
-    // Animate pipeline stages
+    setSelectedLanguage(language);
     setActiveStage(0);
-    const stages = PIPELINE_STAGES;
-    stages.forEach((_, i) => {
+    PIPELINE_STAGES.forEach((_, i) => {
       setTimeout(() => setActiveStage(i), i * 600);
     });
 
@@ -49,6 +52,7 @@ export default function Dashboard() {
         setResult(data);
         setReloadId(null);
         setActiveStage(-1);
+        setActiveTab('analysis');
       },
       onError: () => setActiveStage(-1),
     });
@@ -57,184 +61,224 @@ export default function Dashboard() {
   const isOnline = health?.status === 'ok' || health?.status === 'healthy';
 
   return (
-    <div className="aurora-bg min-h-screen" style={{ position: 'relative' }}>
-      {/* Header */}
-      <header className="sticky top-0 z-30" style={{ background: 'rgba(240,242,255,0.8)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(124,58,237,0.1)' }}>
-        <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center gap-4">
-          {/* Logo */}
+    <div className="aurora-bg min-h-screen pb-20">
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-indigo-100/50">
+        <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #7C3AED, #4F46E5)' }}>
-              <Brain size={18} color="white" />
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gradient-to-br from-indigo-600 to-violet-600 shadow-lg shadow-indigo-200">
+              <Brain size={22} color="white" />
             </div>
             <div>
-              <h1 className="text-sm font-black" style={{ fontFamily: 'Syne', color: '#0F0A2E', letterSpacing: '-0.3px' }}>
-                AegisAI
-              </h1>
-              <p className="text-xs" style={{ color: '#9CA3AF', lineHeight: 1.2 }}>Autonomous Decision Intelligence</p>
+              <h1 className="text-lg font-black tracking-tight text-slate-900" style={{ fontFamily: 'Syne' }}>AegisAI</h1>
+              <div className="flex items-center gap-2">
+                <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {isOnline ? 'Core Operational' : 'Connection Lost'}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Pipeline progress */}
-          {isPending && (
-            <motion.div
-              className="hidden md:flex items-center gap-1.5 ml-6"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              {PIPELINE_STAGES.map((stage, i) => (
-                <div key={stage} className="flex items-center gap-1.5">
-                  <motion.div
-                    className="px-2 py-0.5 rounded-full text-xs font-medium transition-all"
-                    style={{
-                      background: i <= activeStage
-                        ? 'rgba(124,58,237,0.15)'
-                        : 'rgba(0,0,0,0.04)',
-                      color: i <= activeStage ? '#7C3AED' : '#D1D5DB',
-                      border: i === activeStage ? '1px solid rgba(124,58,237,0.4)' : '1px solid transparent',
-                    }}
-                    animate={i === activeStage ? { scale: [1, 1.05, 1] } : {}}
-                    transition={{ repeat: Infinity, duration: 0.8 }}
-                  >
-                    {stage}
-                  </motion.div>
-                  {i < PIPELINE_STAGES.length - 1 && (
-                    <div className="w-3 h-px" style={{ background: i < activeStage ? '#7C3AED' : '#E5E7EB' }} />
-                  )}
-                </div>
-              ))}
-            </motion.div>
-          )}
-
-          {/* Status indicator */}
-          <div className="ml-auto flex items-center gap-2">
-            {isOnline !== undefined && (
-              <div className="flex items-center gap-1.5">
-                {isOnline
-                  ? <Wifi size={13} style={{ color: '#10B981' }} />
-                  : <WifiOff size={13} style={{ color: '#F43F5E' }} />}
-                <span className="text-xs font-medium" style={{ color: isOnline ? '#10B981' : '#F43F5E' }}>
-                  {isOnline ? 'Connected' : 'Offline'}
-                </span>
-              </div>
+          <div className="flex items-center gap-4">
+            {effectiveResult?.audio_response_base64 && (
+              <AudioPlayback base64Audio={effectiveResult.audio_response_base64} autoPlay={true} />
             )}
-            {isPending && (
-              <div className="flex items-center gap-2">
-                <motion.div
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: '#7C3AED' }}
-                  animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                />
-                <span className="text-xs font-medium" style={{ color: '#7C3AED' }}>Analysing...</span>
-              </div>
-            )}
+            <div className="h-8 w-px bg-slate-100 mx-2" />
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Region</span>
+              <span className="text-xs font-bold text-indigo-600">{selectedLanguage}</span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main layout */}
-      <div className="max-w-screen-xl mx-auto px-6 py-6">
-        {/* Top row: Input + History */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-          <div className="lg:col-span-2">
-            <InputPanel onSubmit={handleSubmit} isLoading={isPending} />
+      <main className="max-w-screen-2xl mx-auto px-6 pt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-10">
+          <div className="lg:col-span-3">
+            <InputPanel onSubmit={handleSubmit} isLoading={isPending} isOnline={isOnline} />
+            {isPending && (
+              <motion.div className="mt-8 flex flex-wrap gap-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                {PIPELINE_STAGES.map((stage, i) => (
+                  <div key={stage} className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all border ${
+                    i <= activeStage ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-400'
+                  }`}>
+                    {i < activeStage ? '✓' : i === activeStage ? '●' : '○'} {stage}
+                  </div>
+                ))}
+              </motion.div>
+            )}
           </div>
-          <div>
-            <TaskHistoryPanel
-              tasks={history}
-              isLoading={historyLoading}
-              onReload={(id) => { setReloadId(id); setResult(null); }}
-            />
+          <div className="lg:col-span-1">
+            <TaskHistoryPanel tasks={history} isLoading={historyLoading} onReload={(id) => { setReloadId(id); setResult(null); }} />
           </div>
         </div>
 
-        {/* Loading skeleton */}
-        {isPending && !effectiveResult && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="glass p-6 space-y-3">
-                <div className="skeleton h-4 w-32 rounded-lg" />
-                <div className="skeleton h-20 rounded-xl" />
-                <div className="skeleton h-4 w-48 rounded-lg" />
-              </div>
-            ))}
+        {effectiveResult && (
+          <div className="space-y-8">
+            <div className="flex items-center gap-2 p-1.5 bg-white/50 backdrop-blur-md rounded-3xl border border-white w-fit shadow-xl shadow-indigo-100/50">
+              <TabNav active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<Activity size={16}/>} label="Analysis" />
+              <TabNav active={activeTab === 'graph'} onClick={() => setActiveTab('graph')} icon={<ChevronRight size={16}/>} label="Graph" />
+              <TabNav active={activeTab === 'debate'} onClick={() => setActiveTab('debate')} icon={<Brain size={16}/>} label="Logic" />
+              <TabNav active={activeTab === 'qa'} onClick={() => setActiveTab('qa')} icon={<HelpCircle size={16}/>} label="Verify" />
+              <TabNav active={activeTab === 'reflection'} onClick={() => setActiveTab('reflection')} icon={<RotateCcw size={16}/>} label="Reflection" />
+            </div>
+
+            <AnimatePresence mode="wait">
+              {activeTab === 'analysis' && (
+                <motion.div key="analysis" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <TaskSummaryCard data={effectiveResult} onAskClick={() => setActiveTab('qa')} />
+                  <TrustRiskPanel data={effectiveResult} />
+                  <ExplainabilityPanel data={effectiveResult} onWhyClick={() => setActiveTab('qa')} />
+                  <ExecutionPlanPanel data={effectiveResult} />
+                </motion.div>
+              )}
+
+              {activeTab === 'reflection' && (
+                <motion.div key="reflection" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="max-w-4xl mx-auto">
+                  <ReflectionPanel data={effectiveResult} />
+                </motion.div>
+              )}
+
+              {activeTab === 'graph' && (
+                <motion.div key="graph" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
+                  <div className="lg:col-span-2 h-[650px] glass rounded-3xl overflow-hidden border-indigo-100/50 shadow-2xl">
+                    <ExecutionGraph data={effectiveResult} />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <SimilarTasksPanel data={effectiveResult} />
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'debate' && (
+                <motion.div key="debate" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <DebatePanel data={effectiveResult} />
+                  <div className="space-y-8">
+                    <TrustRiskPanel data={effectiveResult} />
+                    <ExplainabilityPanel data={effectiveResult} onWhyClick={() => setActiveTab('qa')} />
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'qa' && (
+                <motion.div key="qa" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-5xl mx-auto w-full h-[700px]">
+                  <CrossQuestionInline 
+                    reasoning={effectiveResult.plan?.debate_results?.reasoning || effectiveResult.debate_results?.reasoning || effectiveResult.plan?.debate_results?.final_decision || effectiveResult.reasoning || "Analysis complete. Awaiting logic verification questions."}
+                    taskId={effectiveResult.task_id}
+                    language={selectedLanguage}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
-        {/* Results grid */}
-        <AnimatePresence mode="wait">
-          {effectiveResult && (
-            <motion.div
-              key={effectiveResult.task_id || 'result'}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.4 }}
-            >
-              {/* Row 1: Summary + Explainability + Similar Tasks */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
-                <TaskSummaryCard data={effectiveResult} />
-                <ExplainabilityPanel data={effectiveResult} onWhyClick={() => setWhyOpen(true)} />
-                <SimilarTasksPanel data={effectiveResult} />
-              </div>
-
-              {/* Row 2: Debate + Execution Plan + Trust & Risk */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
-                <DebatePanel data={effectiveResult} />
-                <ExecutionPlanPanel data={effectiveResult} />
-                <TrustRiskPanel data={effectiveResult} />
-              </div>
-
-              {/* Row 3: Execution Graph + Reflection */}
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <ExecutionGraph data={effectiveResult} />
-                <ReflectionPanel data={effectiveResult} />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Empty state */}
         {!effectiveResult && !isPending && (
-          <motion.div
-            className="flex flex-col items-center justify-center py-20 gap-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            <motion.div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(79,70,229,0.08))' }}
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <Brain size={36} style={{ color: '#7C3AED', opacity: 0.6 }} />
-            </motion.div>
-            <div className="text-center">
-              <h2 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne', color: '#0F0A2E' }}>
-                Ready to Analyse
-              </h2>
-              <p className="text-sm max-w-md text-center" style={{ color: '#6B7280' }}>
-                Enter a goal or decision you need AegisAI to evaluate. The system will run it through 8 pipeline stages — Commander → Trust → Retrieval → ML → Explainability → Debate → Execution → Reflection.
-              </p>
+          <div className="flex flex-col items-center justify-center py-40 gap-8">
+            <div className="w-32 h-32 rounded-[2.5rem] bg-white border-2 border-indigo-50 shadow-2xl flex items-center justify-center relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Brain size={64} className="text-indigo-600/20 group-hover:text-indigo-600/40 transition-colors" />
             </div>
-            <div className="flex items-center gap-2">
-              <Activity size={14} style={{ color: '#10B981' }} />
-              <span className="text-sm" style={{ color: '#10B981', fontFamily: 'JetBrains Mono' }}>
-                All systems operational
-              </span>
+            <div className="text-center max-w-md">
+              <h2 className="text-3xl font-black text-slate-900 mb-4" style={{ fontFamily: 'Syne' }}>Neural Core Ready</h2>
+              <p className="text-slate-500 leading-relaxed">Enter your mission parameters to activate the autonomous multi-agent reasoning chain and explainability engine.</p>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function TabNav({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) {
+  return (
+    <button onClick={onClick} className={`flex items-center gap-2.5 px-6 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all ${
+      active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+    }`}>
+      {icon} {label}
+    </button>
+  );
+}
+
+function CrossQuestionInline({ reasoning, taskId, language }: { reasoning?: string, taskId?: string, language: string }) {
+  const [question, setQuestion] = useState('');
+  const [chat, setChat] = useState<any[]>([]);
+  const { mutate: askFollowUp, isPending } = useFollowUp();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [chat, isPending]);
+
+  const handleAsk = () => {
+    if (!question.trim() || !taskId) return;
+    const q = question;
+    setChat(prev => [...prev, { role: 'user', content: q }]);
+    setQuestion('');
+    askFollowUp({ taskId, message: q, language }, {
+      onSuccess: (data) => setChat(prev => [...prev, { role: 'assistant', content: data.reply, audio: data.audio_base64 }]),
+      onError: (err) => setChat(prev => [...prev, { role: 'assistant', content: `Verification Failed: ${err.message}` }])
+    });
+  };
+
+  return (
+    <div className="glass h-full flex flex-col p-8 border-indigo-100/50 shadow-2xl rounded-[2rem]">
+      <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-100">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+          <HelpCircle size={24} color="white" />
+        </div>
+        <div>
+          <h3 className="text-xl font-black text-slate-900" style={{ fontFamily: 'Syne' }}>Logic Verification</h3>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cross-examine AegisAI Reasoning</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto space-y-6 pr-4 custom-scrollbar" ref={scrollRef}>
+        <div className="p-5 rounded-3xl bg-indigo-50/50 border border-indigo-100/50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Info size={48} /></div>
+          <p className="text-[10px] font-black uppercase text-indigo-600 mb-3 tracking-widest">Base Analysis Context</p>
+          <p className="text-sm text-slate-700 leading-relaxed relative z-10">{reasoning}</p>
+        </div>
+
+        {chat.map((msg, i) => (
+          <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-5 rounded-3xl shadow-sm ${
+              msg.role === 'user' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-white border border-slate-100 text-slate-800'
+            }`}>
+              <div className="flex items-center gap-2 mb-2 opacity-50">
+                {msg.role === 'user' ? <MessageSquare size={12}/> : <Brain size={12}/>}
+                <span className="text-[9px] font-black uppercase tracking-widest">{msg.role === 'user' ? 'Inquiry' : 'Neural Response'}</span>
+              </div>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+              {msg.audio && <div className="mt-4"><AudioPlayback base64Audio={msg.audio} /></div>}
             </div>
           </motion.div>
+        ))}
+
+        {isPending && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-slate-100 p-5 rounded-3xl flex items-center gap-4 shadow-sm">
+              <Loader2 size={18} className="animate-spin text-indigo-600" />
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Processing inquiry...</span>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Cross-question modal */}
-      <CrossQuestionModal
-        isOpen={whyOpen}
-        onClose={() => setWhyOpen(false)}
-        reasoning={effectiveResult?.plan?.debate_results?.reasoning || effectiveResult?.plan?.reasoning}
-      />
+      <div className="mt-8 pt-8 border-t border-slate-100 flex gap-4">
+        <input
+          className="flex-1 bg-slate-50 border-slate-100 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:bg-white focus:border-indigo-500 transition-all placeholder:text-slate-400 font-medium"
+          placeholder="Type your cross-question here..."
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAsk()}
+        />
+        <button onClick={handleAsk} disabled={isPending || !question.trim()} className="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center">
+          <Send size={20} />
+        </button>
+      </div>
     </div>
   );
 }

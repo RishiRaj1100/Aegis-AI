@@ -64,14 +64,9 @@ class Settings(BaseSettings):
     PINECONE_METRIC: str = "cosine"
     LOCAL_EMBEDDING_MODEL: str = "BAAI/bge-large-en-v1.5"
 
-    # ── Pinecone (Vector Database) ────────────────────────────────────────────
-    PINECONE_API_KEY: Optional[str] = None
-    PINECONE_ENVIRONMENT: str = "us-east-1"
-    PINECONE_INDEX_NAME: str = "aegis-task-semantic"
-    PINECONE_DIMENSION: int = 1024
-    PINECONE_METRIC: str = "cosine"
-    PINECONE_HOST: Optional[str] = None
-    PINECONE_EMBEDDING_MODEL: str = "llama-text-embed-v2"
+    # ── Ollama Local Model ───────────────────────────────────────────────────
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2:1b"
 
     # ── Trust engine defaults (6D holistic model) ───────────────────────────
     TRUST_WEIGHT_GOAL_CLARITY: float = 0.15
